@@ -12,14 +12,24 @@ export interface SpendRow {
   categoryId: number | null;
   categoryDefaultTier: Tier | null;
   tierOverride: Tier | null;
+  /** System categories (Income, Lent & borrowed, Investing transfer, Card
+   * payment) route money that is not spending — every aggregation here
+   * skips them entirely. */
+  categoryIsSystem?: boolean;
 }
 
-/** Positive spend cents per categoryId. Inflows and uncategorized-in rows
- * with positive amounts are excluded; uncategorized spend maps to null. */
+/** True for rows that count as spending: outflows not filed under a system
+ * category. */
+export function isSpend(r: SpendRow): boolean {
+  return r.amountCents < 0 && !r.categoryIsSystem;
+}
+
+/** Positive spend cents per categoryId. Inflows, system-category rows, and
+ * positive amounts are excluded; uncategorized spend maps to null. */
 export function spendByCategory(rows: readonly SpendRow[]): Map<number | null, number> {
   const out = new Map<number | null, number>();
   for (const r of rows) {
-    if (r.amountCents >= 0) continue;
+    if (!isSpend(r)) continue;
     const key = r.categoryId;
     out.set(key, (out.get(key) ?? 0) + -r.amountCents);
   }
@@ -42,7 +52,7 @@ export function tierMixActual(rows: readonly SpendRow[]): TierMix {
   let uncategorizedCount = 0;
   let uncategorizedCents = 0;
   for (const r of rows) {
-    if (r.amountCents >= 0) continue;
+    if (!isSpend(r)) continue;
     const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
     if (tier === null) {
       uncategorizedCount++;

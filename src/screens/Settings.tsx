@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { TIER_FILL } from "../components/charts";
 import type { MatchType } from "../lib/rules";
-import { accountStats, type AccountStats } from "../db/repo/accounts";
+import { accountStats, setAccountBalance, type AccountStats } from "../db/repo/accounts";
+import { centsToDecimalString, parseAmountToCents } from "../lib/money";
 import { listCategories, updateCategory, type Category } from "../db/repo/categories";
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
@@ -82,7 +83,7 @@ export default function Settings() {
 
       {/* Accounts */}
       <div className={section}>ACCOUNTS</div>
-      <div className="mb-8">
+      <div className="mb-2">
         {accounts.map((a) => (
           <div key={a.id} className="flex items-center gap-3.5 border-b border-[rgba(74,108,88,0.28)] py-2">
             <div className="flex-1">
@@ -90,13 +91,48 @@ export default function Settings() {
               <div className="mt-0.5 text-[11px] italic text-ink-faint">
                 {a.type} · <span className="font-mono not-italic">{a.lastDate ?? "no entries"}</span> ·{" "}
                 {a.entryCount} entries
+                {a.balanceAsOf && (
+                  <>
+                    {" "}
+                    · balance as of <span className="font-mono not-italic">{a.balanceAsOf}</span>
+                  </>
+                )}
               </div>
+            </div>
+            <div className="flex items-baseline gap-1" title="Statement balance, entered by hand — shown on the Overview screen">
+              <span className="font-mono text-[11px] text-ink-faint">$</span>
+              <input
+                className="w-24 border-0 border-b border-ink/30 bg-transparent px-0.5 py-1 text-right font-mono text-[12px] text-ink focus:border-accent"
+                defaultValue={a.balanceCents !== 0 ? centsToDecimalString(a.balanceCents) : ""}
+                placeholder="0.00"
+                onBlur={async (e) => {
+                  const cents = parseAmountToCents(e.target.value || "0");
+                  if (cents === null || cents === a.balanceCents) return;
+                  try {
+                    const d = new Date();
+                    await setAccountBalance(
+                      a.id,
+                      cents,
+                      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+                    );
+                    await load();
+                  } catch (err) {
+                    setError(String(err));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+              />
             </div>
           </div>
         ))}
         {accounts.length === 0 && (
           <div className="py-2 text-[12px] italic text-ink-faint">No accounts yet — create one on the Upload screen.</div>
         )}
+      </div>
+      <div className="mb-8 text-[11px] italic text-ink-faint">
+        Balances feed the Overview screen; for credit cards enter the amount owed as a positive number.
       </div>
 
       {/* Categories — default tier */}

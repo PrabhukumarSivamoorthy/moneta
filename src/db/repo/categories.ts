@@ -7,6 +7,10 @@ export interface Category {
   parentId: number | null;
   defaultTier: Tier;
   isArchived: boolean;
+  /** System categories (Income, Lent & borrowed, Investing transfer, Card
+   * payment) route non-spending money; they are excluded from budgets, the
+   * tier mix, and category management by default. */
+  isSystem: boolean;
 }
 
 interface Row {
@@ -15,6 +19,7 @@ interface Row {
   parent_id: number | null;
   default_tier: string;
   is_archived: number;
+  is_system: number;
 }
 
 function fromRow(r: Row): Category {
@@ -24,15 +29,22 @@ function fromRow(r: Row): Category {
     parentId: r.parent_id,
     defaultTier: r.default_tier as Tier,
     isArchived: r.is_archived !== 0,
+    isSystem: r.is_system !== 0,
   };
 }
 
-export async function listCategories(includeArchived = false): Promise<Category[]> {
+export async function listCategories(
+  includeArchived = false,
+  includeSystem = false,
+): Promise<Category[]> {
   const db = await getDb();
+  const where: string[] = [];
+  if (!includeArchived) where.push("is_archived = 0");
+  if (!includeSystem) where.push("is_system = 0");
   const rows = await db.select<Row[]>(
-    includeArchived
-      ? "SELECT id, name, parent_id, default_tier, is_archived FROM categories ORDER BY name"
-      : "SELECT id, name, parent_id, default_tier, is_archived FROM categories WHERE is_archived = 0 ORDER BY name",
+    `SELECT id, name, parent_id, default_tier, is_archived, is_system FROM categories${
+      where.length > 0 ? ` WHERE ${where.join(" AND ")}` : ""
+    } ORDER BY is_system, name`,
   );
   return rows.map(fromRow);
 }
@@ -43,7 +55,7 @@ export async function createCategory(name: string, defaultTier: Tier): Promise<C
     "INSERT INTO categories (name, default_tier) VALUES ($1, $2)",
     [name, defaultTier],
   );
-  return { id: res.lastInsertId as number, name, parentId: null, defaultTier, isArchived: false };
+  return { id: res.lastInsertId as number, name, parentId: null, defaultTier, isArchived: false, isSystem: false };
 }
 
 export async function updateCategory(id: number, name: string, defaultTier: Tier): Promise<void> {

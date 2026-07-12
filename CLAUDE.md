@@ -84,6 +84,19 @@ screens (src/screens)  →  state (src/state)  →  repos (src/db/repo)  →  SQ
 Enums are TEXT + CHECK constraints (SQLite). Seed data: the 10 default
 categories with tiers, and 50/30/20 tier targets.
 
+Migration 0002 additions:
+- `accounts.balance_cents` + `balance_as_of` — statement balances entered by
+  hand in Settings; the Overview screen reads them (brokerage = net
+  contributions, cards = amount owed as positive).
+- `categories.is_system` — the seeded system categories (Income, Lent &
+  borrowed, Investing transfer, Card payment) route non-spending money.
+  **Every spend/tier aggregation excludes them** (see `isSpend` in
+  `src/lib/budget.ts`); they carry no tier and never enter budgets.
+- `goals(id, name, target_cents, target_month, saved_cents, created_at)` —
+  savings goals funded by manual set-asides.
+- Hand-recorded entries (manual income, repayments) are transactions with
+  `upload_id NULL` (shown with a MANUAL tag).
+
 ## Core logic rules
 
 - **Effective tier:** `COALESCE(tier_override, categories.default_tier)`.
@@ -161,5 +174,12 @@ each phase.**
   in a secret file via Rust commands (`src/platform/apiKey.ts`); request
   builder/parser in `src/lib/ai.ts` (only merchant+amount ever sent);
   detection in `src/lib/recurring.ts`.
-- [ ] **Phase 6 — PDF ingestion** via LLM extraction feeding the same review
-  pipeline; cash-flow forecast; Sankey money-flow view; backup/export.
+- [x] **Phase 6a — remaining design screens:** Overview (net position from
+  hand-entered balances), Earnings (income + manual entry + plan + DTI),
+  Lent & Borrowed (per-person balances from the system category), Goals &
+  Loans (savings goals + amortization calculator in `src/lib/loan.ts`),
+  Transfers & Investing.
+- [ ] **Phase 6b — PDF ingestion** via LLM extraction feeding the same
+  review pipeline (per-file consent dialog — the statement content itself
+  goes to the API, unlike AI assist); cash-flow forecast; Sankey money-flow
+  view; backup/export (JSON + CSV) and the danger-zone wipe.

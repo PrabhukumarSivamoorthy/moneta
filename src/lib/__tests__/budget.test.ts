@@ -59,6 +59,22 @@ describe("tierMixActual", () => {
   });
 });
 
+describe("system categories", () => {
+  it("never count as spending in any aggregation", () => {
+    const systemRow: SpendRow = {
+      amountCents: -128440, // a card payment
+      categoryId: 99,
+      categoryDefaultTier: "comfortable",
+      tierOverride: null,
+      categoryIsSystem: true,
+    };
+    expect(spendByCategory([systemRow]).size).toBe(0);
+    const mix = tierMixActual([systemRow]);
+    expect(mix.spendCents).toEqual({ need: 0, comfortable: 0, luxury: 0 });
+    expect(mix.uncategorizedCount).toBe(0);
+  });
+});
+
 describe("budgetStatus", () => {
   it("applies 80%/100% thresholds", () => {
     expect(budgetStatus(7999, 10000)).toBe("ok");

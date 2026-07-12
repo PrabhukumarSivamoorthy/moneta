@@ -22,8 +22,11 @@ export interface TxRow {
   categoryId: number | null;
   categoryName: string | null;
   categoryDefaultTier: Tier | null;
+  categoryIsSystem: boolean;
   categorizationSource: "rule" | "ai" | "manual" | "none";
   tierOverride: Tier | null;
+  /** Null for hand-recorded entries (income, repayments, set-asides). */
+  uploadId: number | null;
 }
 
 export interface TxQuery {
@@ -49,8 +52,10 @@ interface QueryRow {
   category_id: number | null;
   category_name: string | null;
   category_default_tier: string | null;
+  category_is_system: number | null;
   categorization_source: string;
   tier_override: string | null;
+  upload_id: number | null;
 }
 
 const SORT_COLUMNS = {
@@ -86,7 +91,8 @@ export async function queryTransactions(q: TxQuery): Promise<TxRow[]> {
     `SELECT t.id, t.date, t.amount_cents, t.merchant_raw, t.merchant_normalized,
             t.account_id, a.name AS account_name,
             t.category_id, c.name AS category_name, c.default_tier AS category_default_tier,
-            t.categorization_source, t.tier_override
+            c.is_system AS category_is_system,
+            t.categorization_source, t.tier_override, t.upload_id
      FROM transactions t
      JOIN accounts a ON a.id = t.account_id
      LEFT JOIN categories c ON c.id = t.category_id
@@ -105,8 +111,10 @@ export async function queryTransactions(q: TxQuery): Promise<TxRow[]> {
     categoryId: r.category_id,
     categoryName: r.category_name,
     categoryDefaultTier: r.category_default_tier as Tier | null,
+    categoryIsSystem: (r.category_is_system ?? 0) !== 0,
     categorizationSource: r.categorization_source as TxRow["categorizationSource"],
     tierOverride: r.tier_override as Tier | null,
+    uploadId: r.upload_id,
   }));
 }
 
@@ -139,6 +147,35 @@ export async function setTransactionsCategory(
 export async function setTierOverride(id: number, tier: Tier | null): Promise<void> {
   const db = await getDb();
   await db.execute("UPDATE transactions SET tier_override = $1 WHERE id = $2", [tier, id]);
+}
+
+/** Hand-recorded entry (manual income, repayment, goal set-aside): no
+ * upload, categorization_source 'manual'. */
+export async function insertManual(entry: {
+  accountId: number;
+  date: string;
+  amountCents: number;
+  merchantRaw: string;
+  merchantNormalized: string;
+  categoryId: number | null;
+  dedupHash: string;
+}): Promise<number> {
+  const db = await getDb();
+  const res = await db.execute(
+    `INSERT INTO transactions (upload_id, account_id, date, amount_cents, merchant_raw, merchant_normalized, category_id, categorization_source, dedup_hash, created_at)
+     VALUES (NULL, $1, $2, $3, $4, $5, $6, 'manual', $7, $8)`,
+    [
+      entry.accountId,
+      entry.date,
+      entry.amountCents,
+      entry.merchantRaw,
+      entry.merchantNormalized,
+      entry.categoryId,
+      entry.dedupHash,
+      new Date().toISOString(),
+    ],
+  );
+  return res.lastInsertId as number;
 }
 
 /** All dedup hashes already in the ledger for one account. */

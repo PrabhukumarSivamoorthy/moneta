@@ -5,7 +5,7 @@
  */
 import type { Bucket } from "./period";
 import { effectiveTier, type Tier } from "./tier";
-import type { SpendRow } from "./budget";
+import { isSpend, type SpendRow } from "./budget";
 
 export interface DatedSpendRow extends SpendRow {
   date: string;
@@ -27,7 +27,7 @@ export function spendByBucket(
 ): number[] {
   const out = new Array<number>(buckets.length).fill(0);
   for (const r of rows) {
-    if (r.amountCents >= 0) continue;
+    if (!isSpend(r)) continue;
     const i = bucketIndex(buckets, r.date);
     if (i >= 0) out[i] += -r.amountCents;
   }
@@ -55,7 +55,7 @@ export function tierSpendByBucket(
 ): TierCents[] {
   const out: TierCents[] = buckets.map(() => ({ need: 0, comfortable: 0, luxury: 0 }));
   for (const r of rows) {
-    if (r.amountCents >= 0) continue;
+    if (!isSpend(r)) continue;
     const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
     if (tier === null) continue;
     const i = bucketIndex(buckets, r.date);
@@ -96,7 +96,7 @@ export function topMerchants(
 ): { name: string; cents: number }[] {
   const byName = new Map<string, number>();
   for (const r of rows) {
-    if (r.amountCents >= 0) continue;
+    if (!isSpend(r)) continue;
     if (categoryId !== null && r.categoryId !== categoryId) continue;
     byName.set(r.merchantNormalized, (byName.get(r.merchantNormalized) ?? 0) + -r.amountCents);
   }

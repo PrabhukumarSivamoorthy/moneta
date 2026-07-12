@@ -65,7 +65,7 @@ export default function Transactions() {
           sortDir,
         }),
         listAccounts(),
-        listCategories(),
+        listCategories(false, true), // system categories included: filing under them is how Lent/Investing/Income work
         getAllSettings(),
       ]);
       setRows(txs);
@@ -82,13 +82,17 @@ export default function Transactions() {
     void load();
   }, [load]);
 
-  /** Tier + uncategorized filtering happens here, on effective tier. */
+  const spendingCategories = useMemo(() => categories.filter((c) => !c.isSystem), [categories]);
+  const systemCategories = useMemo(() => categories.filter((c) => c.isSystem), [categories]);
+
+  /** Tier + uncategorized filtering happens here, on effective tier.
+   * System-category rows carry no tier. */
   const visible = useMemo(() => {
     if (!rows) return null;
     return rows.filter((r) => {
       if (categoryFilter === "uncategorized" && r.categoryId !== null) return false;
       if (tierFilter === "all") return true;
-      const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
+      const tier = r.categoryIsSystem ? null : effectiveTier(r.tierOverride, r.categoryDefaultTier);
       return tierFilter === "untiered" ? tier === null : tier === tierFilter;
     });
   }, [rows, tierFilter, categoryFilter]);
@@ -252,11 +256,20 @@ export default function Transactions() {
         >
           <option value="all">All categories</option>
           <option value="uncategorized">Uncategorized</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
+          <optgroup label="Spending">
+            {spendingCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="System">
+            {systemCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
         </select>
         <select className={selectCls} value={tierFilter} onChange={(e) => setTierFilter(e.target.value as TierFilter)}>
           <option value="all">All tiers</option>
@@ -333,11 +346,20 @@ export default function Transactions() {
             onChange={(e) => setBulkCategory(e.target.value === "" ? "" : Number(e.target.value))}
           >
             <option value="">Set category…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            <optgroup label="Spending">
+              {spendingCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="System">
+              {systemCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <button
             className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90 disabled:bg-ink/15 disabled:text-ink-mute"
@@ -426,12 +448,26 @@ export default function Transactions() {
                       onChange={(e) => void recategorize(r, e.target.value === "" ? null : Number(e.target.value))}
                     >
                       <option value="">— uncategorized —</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
+                      <optgroup label="Spending">
+                        {spendingCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="System">
+                        {systemCategories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
+                    {r.uploadId === null && (
+                      <span className="ml-1.5 border border-ink/20 px-1 py-px font-courier text-[8.5px] tracking-[0.1em] text-ink-mute" title="Recorded by hand, not imported">
+                        MANUAL
+                      </span>
+                    )}
                     {r.categorizationSource === "rule" && r.categoryId !== null && (
                       <span className="ml-1.5 font-courier text-[9px] tracking-[0.08em] text-ink-faint" title="Categorized by a rule">
                         RULE
@@ -471,8 +507,10 @@ export default function Transactions() {
                     )}
                   </td>
                   <td className="py-2 pr-4">
-                    {r.categoryId === null ? (
-                      <span className="font-courier text-[10px] text-ink-faint">—</span>
+                    {r.categoryId === null || r.categoryIsSystem ? (
+                      <span className="font-courier text-[10px] text-ink-faint" title={r.categoryIsSystem ? "System categories carry no tier" : undefined}>
+                        —
+                      </span>
                     ) : (
                       <select
                         className={`${selectCls} ${r.tierOverride ? "font-medium text-accent" : ""}`}
