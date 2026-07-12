@@ -32,6 +32,8 @@ jobs:
     # Package only for version tags or manual runs — not every push.
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: test
+    permissions:
+      contents: write # tauri-action creates the draft release and uploads bundles
     strategy:
       fail-fast: false
       matrix:
