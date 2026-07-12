@@ -232,3 +232,7 @@ src-tauri/gen/
 
 # Local secrets (Anthropic API key etc.)
 *.secret.json
+
+# Playwright
+test-results/
+playwright-report/

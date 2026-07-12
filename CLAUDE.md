@@ -13,7 +13,15 @@ categorization assist (see Privacy below).
 | `npm run tauri build` | Build the distributable app bundle |
 | `npm test` | Run Vitest once (`src/**/*.test.ts`) |
 | `npm run test:watch` | Vitest in watch mode |
+| `npm run test:e2e` | Playwright browser E2E suite (`e2e/*.spec.ts`) — starts vite itself |
 | `npm run typecheck` | `tsc --noEmit` (strict mode) |
+
+The E2E suite runs the real UI in Chromium against a deterministic Tauri IPC
+stub (`e2e/support/tauri-stub.js`) that emulates the SQL plugin, key
+commands, save dialog, and Anthropic API. All stub dates are generated
+relative to today so the suite never rots. SQL writes, exported files, and
+AI request bodies are captured on `window.__executed` / `__written` /
+`__aiCalls` for assertions (including the privacy guarantees).
 
 First `tauri dev`/`build` compiles the Rust crate and takes several minutes;
 subsequent runs are incremental.
