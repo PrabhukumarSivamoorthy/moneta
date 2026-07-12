@@ -44,6 +44,25 @@ complete or committing it:
 5. Report actual results (test counts, failures) — never assert success
    without having run the commands.
 
+## Documentation discipline — update docs with every change
+
+`docs/ARCHITECTURE.md` holds the high-level block diagram, the data model,
+and sequence/flow diagrams for every major flow (import, AI assist, reads,
+export/wipe), written for engineers new to the codebase. Whenever a feature
+is modified or added — new flow, new table/column, new screen, changed
+pipeline — update the matching diagram/section there **in the same change**,
+and update this file's roadmap/data-model notes if they are affected. Docs
+that lag the code are treated as bugs.
+
+## Build & release
+
+- Local package: `npm run tauri build` → `src-tauri/target/release/bundle/`.
+- CI: `.github/workflows/build.yml` — tests on every push/PR; on version
+  tags (`v*`) or manual dispatch it builds macOS arm64 + Intel and Windows
+  bundles and attaches them to a draft GitHub release.
+- App icon: replace `app-icon.png` (1024×1024) and run
+  `npx tauri icon app-icon.png` to regenerate `src-tauri/icons/`.
+
 ## Locked stack decisions — do not revisit
 
 - **Shell:** Tauri 2 + React + TypeScript (strict) + Vite. Tailwind CSS v4
