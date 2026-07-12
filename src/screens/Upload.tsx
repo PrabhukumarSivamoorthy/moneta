@@ -17,6 +17,8 @@ import {
 } from "../db/repo/bankProfiles";
 import { createUpload } from "../db/repo/uploads";
 import { existingHashes, insertImported } from "../db/repo/transactions";
+import { listRules } from "../db/repo/rules";
+import { applyRules } from "../lib/rules";
 
 type Step = "a" | "b" | "c";
 
@@ -40,6 +42,7 @@ interface CommitSummary {
   inserted: number;
   skippedDuplicates: number;
   failedRows: number;
+  autoCategorized: number;
 }
 
 const EMPTY_SPEC: BankProfileSpec = {
@@ -333,23 +336,23 @@ export default function Upload() {
     setCommitting(true);
     try {
       const included = reviewRows.filter((r) => r.include);
+      const rules = await listRules();
+      const rows = included.map((r) => ({
+        date: r.date,
+        amountCents: r.amountCents,
+        merchantRaw: r.merchantRaw,
+        merchantNormalized: r.merchantNormalized,
+        dedupHash: r.flags.hash,
+        categoryId: applyRules(rules, r.merchantNormalized),
+      }));
       const uploadId = await createUpload(accountId, profileId, file.name, included.length);
-      await insertImported(
-        uploadId,
-        accountId,
-        included.map((r) => ({
-          date: r.date,
-          amountCents: r.amountCents,
-          merchantRaw: r.merchantRaw,
-          merchantNormalized: r.merchantNormalized,
-          dedupHash: r.flags.hash,
-        })),
-      );
+      await insertImported(uploadId, accountId, rows);
       setSummary({
         filename: file.name,
         inserted: included.length,
         skippedDuplicates: reviewRows.filter((r) => !r.include).length,
         failedRows: parsed?.errors.length ?? 0,
+        autoCategorized: rows.filter((r) => r.categoryId != null).length,
       });
       setStep("c");
     } catch (e) {
@@ -674,6 +677,9 @@ export default function Upload() {
             <div className="flex flex-col gap-1.5 text-[13.5px]">
               <div>
                 <span className="font-mono">{summary.inserted}</span> entries added to the ledger
+              </div>
+              <div className="text-ink-mute">
+                <span className="font-mono">{summary.autoCategorized}</span> auto-categorized by your rules
               </div>
               <div className="text-ink-mute">
                 <span className="font-mono">{summary.skippedDuplicates}</span> duplicates skipped

@@ -143,10 +143,11 @@ each phase.**
   parse → review screen with dedup flags and error list → commit.
   (Dev smoke: `VITE_E2E=1 npm run tauri dev` runs the whole pipeline
   against the real DB — see `src/dev/e2eImport.ts`.)
-- [ ] **Phase 2 — Transactions UI + global period selector:** period state +
+- [x] **Phase 2 — Transactions UI + global period selector:** period state +
   scoped queries; ledger table with filters/search (incl. tier filter),
   inline recategorize, per-transaction tier override, bulk actions; rules
-  engine + corrections-to-rules; category manager with default-tier selector.
+  engine + corrections-to-rules; category manager with default-tier selector
+  (on the Budgets screen).
 - [ ] **Phase 3 — Budgets:** per-category monthly budgets, 80%/100%
   thresholds, month switcher, copy-last-month; tier targets editor
   (sum-to-100 validation); prorated weekly pace.

@@ -12,13 +12,17 @@
 import { parseStatement } from "../lib/csv/parse";
 import { normalizeMerchant } from "../lib/csv/normalize";
 import { flagDuplicates } from "../lib/dedup";
+import { applyRules } from "../lib/rules";
 import { createAccount, listAccounts } from "../db/repo/accounts";
 import { createBankProfile, listBankProfiles } from "../db/repo/bankProfiles";
+import { listCategories } from "../db/repo/categories";
+import { createRule, listRules } from "../db/repo/rules";
 import { createUpload } from "../db/repo/uploads";
 import {
   countTransactions,
   existingHashes,
   insertImported,
+  queryTransactions,
 } from "../db/repo/transactions";
 
 const FIXTURE_CSV = `Transaction Date,Description,Amount
@@ -44,6 +48,14 @@ export async function runE2eImport(): Promise<void> {
     columnMap: { date: "Transaction Date", description: "Description", amount: "Amount" },
     signConvention: "debits_negative",
   });
+
+  // A correction-style rule so the import exercises the rules engine:
+  // anything containing "wholefds" files under Groceries.
+  const groceries = (await listCategories()).find((c) => c.name === "Groceries");
+  if (groceries && !(await listRules()).some((r) => r.matcher === "wholefds")) {
+    await createRule("wholefds", "contains", groceries.id, "correction");
+  }
+  const rules = await listRules();
 
   const before = await countTransactions();
   const parsed = parseStatement(FIXTURE_CSV, profile);
@@ -81,10 +93,21 @@ export async function runE2eImport(): Promise<void> {
         merchantRaw: r.merchantRaw,
         merchantNormalized: r.merchantNormalized,
         dedupHash: r.flags.hash,
+        categoryId: applyRules(rules, r.merchantNormalized),
       })),
     );
   }
   const after = await countTransactions();
   log(`transactions before=${before} after=${after}`);
-  log("RESULT", { inserted: after - before, skipped, errors: parsed.errors.length });
+
+  // Read back through the period-scoped query to verify rule categorization.
+  const rows = await queryTransactions({ start: "2026-07-01", end: "2026-07-31" });
+  const ruled = rows.filter((r) => r.categorizationSource === "rule");
+  ruled.forEach((r) => log(`  rule-categorized: ${r.merchantNormalized} → ${r.categoryName}`));
+  log("RESULT", {
+    inserted: after - before,
+    skipped,
+    errors: parsed.errors.length,
+    ruleCategorized: ruled.length,
+  });
 }

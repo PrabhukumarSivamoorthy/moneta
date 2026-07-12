@@ -1,5 +1,390 @@
-import ScreenStub from "../components/ScreenStub";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useResolvedPeriod } from "../state/period";
+import { formatCents } from "../lib/money";
+import { effectiveTier, TIER_LABELS, TIERS, type Tier } from "../lib/tier";
+import { listAccounts, type Account } from "../db/repo/accounts";
+import { listCategories, type Category } from "../db/repo/categories";
+import { createRule } from "../db/repo/rules";
+import {
+  queryTransactions,
+  setTierOverride,
+  setTransactionCategory,
+  setTransactionsCategory,
+  type TxRow,
+} from "../db/repo/transactions";
+
+type SortKey = "date" | "amount" | "merchant";
+type TierFilter = "all" | Tier | "untiered";
+
+const selectCls =
+  "bg-transparent border-0 border-b border-ink/40 px-0.5 py-[6px] text-[12.5px] text-ink cursor-pointer font-serif focus:border-accent";
+
+/** Offer shown after a manual recategorization: persist it as a rule. */
+interface RuleOffer {
+  merchantNormalized: string;
+  categoryId: number;
+  categoryName: string;
+}
 
 export default function Transactions() {
-  return <ScreenStub title="Transactions" note="The full ledger, filterable and searchable." phase={2} />;
+  const period = useResolvedPeriod();
+  const [rows, setRows] = useState<TxRow[] | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [accountFilter, setAccountFilter] = useState<number | "all">("all");
+  const [categoryFilter, setCategoryFilter] = useState<number | "all" | "uncategorized">("all");
+  const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState<number | "">("");
+  const [ruleOffer, setRuleOffer] = useState<RuleOffer | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [txs, accts, cats] = await Promise.all([
+        queryTransactions({
+          start: period.start,
+          end: period.end,
+          accountId: accountFilter === "all" ? null : accountFilter,
+          categoryId: typeof categoryFilter === "number" ? categoryFilter : null,
+          search,
+          sortKey,
+          sortDir,
+        }),
+        listAccounts(),
+        listCategories(),
+      ]);
+      setRows(txs);
+      setAccounts(accts);
+      setCategories(cats);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [period.start, period.end, accountFilter, categoryFilter, search, sortKey, sortDir]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Tier + uncategorized filtering happens here, on effective tier. */
+  const visible = useMemo(() => {
+    if (!rows) return null;
+    return rows.filter((r) => {
+      if (categoryFilter === "uncategorized" && r.categoryId !== null) return false;
+      if (tierFilter === "all") return true;
+      const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
+      return tierFilter === "untiered" ? tier === null : tier === tierFilter;
+    });
+  }, [rows, tierFilter, categoryFilter]);
+
+  const uncategorizedCount = useMemo(
+    () => rows?.filter((r) => r.categoryId === null).length ?? 0,
+    [rows],
+  );
+
+  const totals = useMemo(() => {
+    if (!visible) return { out: 0, in: 0 };
+    let out = 0;
+    let inn = 0;
+    for (const r of visible) {
+      if (r.amountCents < 0) out += r.amountCents;
+      else inn += r.amountCents;
+    }
+    return { out, in: inn };
+  }, [visible]);
+
+  const recategorize = async (row: TxRow, categoryId: number | null) => {
+    try {
+      await setTransactionCategory(row.id, categoryId, "manual");
+      if (categoryId !== null) {
+        const cat = categories.find((c) => c.id === categoryId);
+        if (cat) {
+          setRuleOffer({
+            merchantNormalized: row.merchantNormalized,
+            categoryId,
+            categoryName: cat.name,
+          });
+        }
+      }
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const sortHeader = (key: SortKey, label: string, extra = "") => (
+    <th
+      onClick={() => {
+        if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        else {
+          setSortKey(key);
+          setSortDir(key === "merchant" ? "asc" : "desc");
+        }
+      }}
+      className={`cursor-pointer select-none py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute hover:text-ink ${extra}`}
+    >
+      {label}
+      {sortKey === key && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
+    </th>
+  );
+
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline gap-4">
+        <div className="text-[20px] font-semibold">Transactions</div>
+        {uncategorizedCount > 0 && (
+          <span
+            className="cursor-pointer border border-accent/50 px-2 py-0.5 font-courier text-[10.5px] text-accent hover:bg-accent/10"
+            onClick={() => setCategoryFilter("uncategorized")}
+          >
+            {uncategorizedCount} UNCATEGORIZED
+          </span>
+        )}
+      </div>
+      <div className="mb-5 text-[12.5px] italic text-ink-mute">
+        {formatCents(totals.out)} out · {formatCents(totals.in)} in, within {period.label.toLowerCase()}
+      </div>
+
+      {error && (
+        <div className="mb-5 border border-danger/50 bg-danger/5 px-4 py-3 text-[13px] text-danger">
+          Database error: {error}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mb-4 flex items-end gap-5 border-b border-rule pb-3">
+        <input
+          className="w-64 border-0 border-b border-ink/40 bg-transparent px-0.5 py-[6px] font-serif text-[13px] italic text-ink placeholder:text-ink-faint focus:border-accent"
+          placeholder="Search merchants…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className={selectCls}
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+        >
+          <option value="all">All accounts</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </select>
+        <select
+          className={selectCls}
+          value={categoryFilter}
+          onChange={(e) => {
+            const v = e.target.value;
+            setCategoryFilter(v === "all" || v === "uncategorized" ? v : Number(v));
+          }}
+        >
+          <option value="all">All categories</option>
+          <option value="uncategorized">Uncategorized</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select className={selectCls} value={tierFilter} onChange={(e) => setTierFilter(e.target.value as TierFilter)}>
+          <option value="all">All tiers</option>
+          {TIERS.map((t) => (
+            <option key={t} value={t}>
+              {TIER_LABELS[t]}
+            </option>
+          ))}
+          <option value="untiered">No tier (uncategorized)</option>
+        </select>
+      </div>
+
+      {/* Rule offer after a manual correction */}
+      {ruleOffer && (
+        <div className="mb-4 flex items-center gap-3 border border-accent/50 bg-accent/5 px-4 py-2.5">
+          <span className="text-[13px]">
+            Always file <span className="font-medium">“{ruleOffer.merchantNormalized}”</span> under{" "}
+            <span className="font-medium">{ruleOffer.categoryName}</span>?
+          </span>
+          <button
+            className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90"
+            onClick={async () => {
+              try {
+                await createRule(ruleOffer.merchantNormalized, "contains", ruleOffer.categoryId, "correction");
+                setRuleOffer(null);
+              } catch (e) {
+                setError(String(e));
+              }
+            }}
+          >
+            Create rule
+          </button>
+          <span
+            className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+            onClick={() => setRuleOffer(null)}
+          >
+            just this one
+          </span>
+        </div>
+      )}
+
+      {/* Bulk bar */}
+      {selected.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 border border-rule bg-ink/[0.03] px-4 py-2.5">
+          <span className="font-courier text-[11px] tracking-[0.08em]">
+            {selected.size} SELECTED
+          </span>
+          <select
+            className={selectCls}
+            value={bulkCategory}
+            onChange={(e) => setBulkCategory(e.target.value === "" ? "" : Number(e.target.value))}
+          >
+            <option value="">Set category…</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90 disabled:bg-ink/15 disabled:text-ink-mute"
+            disabled={bulkCategory === ""}
+            onClick={async () => {
+              try {
+                await setTransactionsCategory([...selected], bulkCategory as number, "manual");
+                setSelected(new Set());
+                setBulkCategory("");
+                await load();
+              } catch (e) {
+                setError(String(e));
+              }
+            }}
+          >
+            Apply
+          </button>
+          <span
+            className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+            onClick={() => setSelected(new Set())}
+          >
+            clear selection
+          </span>
+        </div>
+      )}
+
+      {/* Ledger table */}
+      {visible === null ? (
+        <div className="text-[13px] italic text-ink-mute">Loading…</div>
+      ) : visible.length === 0 ? (
+        <div className="border border-dashed border-rule px-6 py-10 text-center text-[13px] italic text-ink-mute">
+          No transactions in this period{search || accountFilter !== "all" || categoryFilter !== "all" || tierFilter !== "all" ? " matching the filters" : ""}.
+        </div>
+      ) : (
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-rule">
+              <th className="w-8 py-2">
+                <input
+                  type="checkbox"
+                  className="accent-[#2F5D45]"
+                  checked={visible.length > 0 && visible.every((r) => selected.has(r.id))}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(visible.map((r) => r.id)) : new Set())
+                  }
+                />
+              </th>
+              {sortHeader("date", "DATE")}
+              {sortHeader("merchant", "MERCHANT")}
+              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">ACCOUNT</th>
+              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">CATEGORY</th>
+              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">TIER</th>
+              {sortHeader("amount", "AMOUNT", "text-right")}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((r) => {
+              const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
+              return (
+                <tr key={r.id} className="border-b border-rule-soft hover:bg-ink/[0.025]">
+                  <td className="py-2">
+                    <input
+                      type="checkbox"
+                      className="accent-[#2F5D45]"
+                      checked={selected.has(r.id)}
+                      onChange={(e) =>
+                        setSelected((s) => {
+                          const next = new Set(s);
+                          if (e.target.checked) next.add(r.id);
+                          else next.delete(r.id);
+                          return next;
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-[12px]">{r.date}</td>
+                  <td className="py-2 pr-4">
+                    <div className="text-[13px]">{r.merchantNormalized}</div>
+                    <div className="font-mono text-[10px] text-ink-faint">{r.merchantRaw}</div>
+                  </td>
+                  <td className="py-2 pr-4 text-[12px] text-ink-soft">{r.accountName}</td>
+                  <td className="py-2 pr-4">
+                    <select
+                      className={`${selectCls} ${r.categoryId === null ? "border-accent/60 italic text-accent" : ""}`}
+                      value={r.categoryId ?? ""}
+                      onChange={(e) => void recategorize(r, e.target.value === "" ? null : Number(e.target.value))}
+                    >
+                      <option value="">— uncategorized —</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    {r.categorizationSource === "rule" && r.categoryId !== null && (
+                      <span className="ml-1.5 font-courier text-[9px] tracking-[0.08em] text-ink-faint" title="Categorized by a rule">
+                        RULE
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4">
+                    {r.categoryId === null ? (
+                      <span className="font-courier text-[10px] text-ink-faint">—</span>
+                    ) : (
+                      <select
+                        className={`${selectCls} ${r.tierOverride ? "font-medium text-accent" : ""}`}
+                        title={r.tierOverride ? "Tier override set on this transaction" : "Category default tier"}
+                        value={r.tierOverride ?? ""}
+                        onChange={async (e) => {
+                          try {
+                            await setTierOverride(r.id, e.target.value === "" ? null : (e.target.value as Tier));
+                            await load();
+                          } catch (err) {
+                            setError(String(err));
+                          }
+                        }}
+                      >
+                        <option value="">{tier ? `${TIER_LABELS[tier]} (default)` : "—"}</option>
+                        {TIERS.map((t) => (
+                          <option key={t} value={t}>
+                            {TIER_LABELS[t]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className={`py-2 text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
+                    {formatCents(r.amountCents)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }

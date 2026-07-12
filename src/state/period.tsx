@@ -1,15 +1,17 @@
 import {
   createContext,
   useContext,
+  useMemo,
   useReducer,
   type Dispatch,
   type ReactNode,
 } from "react";
+import { resolvePeriod, type ResolvedPeriod } from "../lib/period";
 
 /**
  * App-wide period filter. Every read query (totals, tables, charts, tier mix)
- * scopes to this. Boundary/bucket/proration math lives in src/lib/period.ts
- * (Phase 2); this store only holds the selection.
+ * scopes to this. Boundary/bucket/proration math lives in src/lib/period.ts;
+ * this store only holds the selection.
  */
 export type PeriodScope = "week" | "month" | "year" | "custom";
 
@@ -69,4 +71,27 @@ export function usePeriod() {
   const ctx = useContext(PeriodContext);
   if (!ctx) throw new Error("usePeriod must be used within PeriodProvider");
   return ctx;
+}
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The selected period resolved to boundaries, label, and buckets. */
+export function useResolvedPeriod(): ResolvedPeriod {
+  const { period } = usePeriod();
+  return useMemo(
+    () =>
+      resolvePeriod(
+        {
+          scope: period.scope,
+          offset: period.offset,
+          customStart: period.customStart,
+          customEnd: period.customEnd,
+        },
+        todayIso(),
+      ),
+    [period],
+  );
 }

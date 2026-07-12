@@ -1,5 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { PeriodProvider, usePeriod, type PeriodScope } from "./state/period";
+import {
+  PeriodProvider,
+  usePeriod,
+  useResolvedPeriod,
+  type PeriodScope,
+} from "./state/period";
 import Overview from "./screens/Overview";
 import Dashboard from "./screens/Dashboard";
 import Earnings from "./screens/Earnings";
@@ -96,23 +101,12 @@ function NavItem({
   );
 }
 
-/**
- * Placeholder period label until src/lib/period.ts (Phase 2) provides real
- * boundary math. Month scope only; other scopes show the scope name.
- */
-function periodLabel(scope: PeriodScope, offset: number): string {
-  if (scope === "month") {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() + offset);
-    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  }
-  if (scope === "year") return String(new Date().getFullYear() + offset);
-  return scope === "week" ? "Week view" : "Custom range";
-}
-
 function PeriodBar() {
   const { period, dispatch } = usePeriod();
+  const resolved = useResolvedPeriod();
+  const isCustom = period.scope === "custom";
+  const dateInput =
+    "bg-transparent border-0 border-b border-ink/40 px-0.5 py-1 font-mono text-[12px] text-ink focus:border-accent";
   return (
     <div className="flex flex-none items-center gap-4 border-b border-rule bg-paper px-9 py-3">
       <div className="flex gap-[2px]">
@@ -131,25 +125,56 @@ function PeriodBar() {
         ))}
       </div>
       <div className="h-5 w-px bg-ink/20" />
-      <div className="flex gap-[6px]">
-        <button
-          onClick={() => dispatch({ type: "step", direction: -1 })}
-          title="Previous period"
-          className="h-[26px] w-[26px] cursor-pointer border border-ink/35 bg-transparent p-0 text-[11px] text-ink hover:bg-ink/[0.07]"
-        >
-          ◀
-        </button>
-        <button
-          onClick={() => dispatch({ type: "step", direction: 1 })}
-          title="Next period"
-          className="h-[26px] w-[26px] cursor-pointer border border-ink/35 bg-transparent p-0 text-[11px] text-ink hover:bg-ink/[0.07]"
-        >
-          ▶
-        </button>
+      {isCustom ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            className={dateInput}
+            value={period.customStart ?? resolved.start}
+            onChange={(e) =>
+              dispatch({
+                type: "setCustomRange",
+                start: e.target.value,
+                end: period.customEnd ?? e.target.value,
+              })
+            }
+          />
+          <span className="text-[12px] text-ink-mute">to</span>
+          <input
+            type="date"
+            className={dateInput}
+            value={period.customEnd ?? resolved.end}
+            onChange={(e) =>
+              dispatch({
+                type: "setCustomRange",
+                start: period.customStart ?? resolved.start,
+                end: e.target.value,
+              })
+            }
+          />
+        </div>
+      ) : (
+        <div className="flex gap-[6px]">
+          <button
+            onClick={() => dispatch({ type: "step", direction: -1 })}
+            title="Previous period"
+            className="h-[26px] w-[26px] cursor-pointer border border-ink/35 bg-transparent p-0 text-[11px] text-ink hover:bg-ink/[0.07]"
+          >
+            ◀
+          </button>
+          <button
+            onClick={() => dispatch({ type: "step", direction: 1 })}
+            title="Next period"
+            className="h-[26px] w-[26px] cursor-pointer border border-ink/35 bg-transparent p-0 text-[11px] text-ink hover:bg-ink/[0.07]"
+          >
+            ▶
+          </button>
+        </div>
+      )}
+      <div className="flex items-baseline gap-2.5">
+        <span className="text-[16px] font-semibold italic">{resolved.label}</span>
+        <span className="font-courier text-[10.5px] text-ink-mute">{resolved.sub}</span>
       </div>
-      <span className="text-[16px] font-semibold italic">
-        {periodLabel(period.scope, period.offset)}
-      </span>
       <div className="flex-1" />
     </div>
   );
