@@ -148,9 +148,9 @@ each phase.**
   inline recategorize, per-transaction tier override, bulk actions; rules
   engine + corrections-to-rules; category manager with default-tier selector
   (on the Budgets screen).
-- [ ] **Phase 3 — Budgets:** per-category monthly budgets, 80%/100%
-  thresholds, month switcher, copy-last-month; tier targets editor
-  (sum-to-100 validation); prorated weekly pace.
+- [x] **Phase 3 — Budgets:** per-category monthly budgets, 80%/100%
+  thresholds, month switcher (via the global period bar), copy-last-month;
+  tier targets editor (sum-to-100 validation); prorated weekly pace.
 - [ ] **Phase 4 — Dashboard + Trends:** period overview with alerts and
   tier-mix module; per-category trend chart with adaptive bucketing and
   drill-down; tier composition stacked-area with Luxury-share change.

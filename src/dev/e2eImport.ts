@@ -24,6 +24,7 @@ import {
   insertImported,
   queryTransactions,
 } from "../db/repo/transactions";
+import { budgetsForMonths, copyBudgets, setBudget } from "../db/repo/budgets";
 
 const FIXTURE_CSV = `Transaction Date,Description,Amount
 07/11/2026,WHOLEFDS #10233 SEATTLE WA,-84.27
@@ -104,6 +105,19 @@ export async function runE2eImport(): Promise<void> {
   const rows = await queryTransactions({ start: "2026-07-01", end: "2026-07-31" });
   const ruled = rows.filter((r) => r.categorizationSource === "rule");
   ruled.forEach((r) => log(`  rule-categorized: ${r.merchantNormalized} → ${r.categoryName}`));
+  // Budgets repo round-trip: set June, copy June → July, read both back.
+  if (groceries) {
+    await setBudget(groceries.id, "2026-06", 52000);
+    await setBudget(groceries.id, "2026-06", 54000); // upsert overwrites
+    const copiedCount = await copyBudgets("2026-06", "2026-07");
+    const budgetRows = await budgetsForMonths(["2026-06", "2026-07"]);
+    log(
+      `budgets: copied=${copiedCount} rows=${budgetRows
+        .map((b) => `${b.month}=$${b.amountCents / 100}`)
+        .join(", ")}`,
+    );
+  }
+
   log("RESULT", {
     inserted: after - before,
     skipped,
