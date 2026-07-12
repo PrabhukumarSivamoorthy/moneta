@@ -139,8 +139,10 @@ each phase.**
 
 - [x] **Phase 0 — Scaffold:** Tauri 2 app boots; Tailwind wired; SQL plugin +
   migration runner working; Vitest configured; CLAUDE.md.
-- [ ] **Phase 1 — CSV import:** bank profile CRUD + column-mapping UI →
+- [x] **Phase 1 — CSV import:** bank profile CRUD + column-mapping UI →
   parse → review screen with dedup flags and error list → commit.
+  (Dev smoke: `VITE_E2E=1 npm run tauri dev` runs the whole pipeline
+  against the real DB — see `src/dev/e2eImport.ts`.)
 - [ ] **Phase 2 — Transactions UI + global period selector:** period state +
   scoped queries; ledger table with filters/search (incl. tier filter),
   inline recategorize, per-transaction tier override, bulk actions; rules
