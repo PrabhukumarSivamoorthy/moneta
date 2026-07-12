@@ -8,6 +8,7 @@ import {
   Line,
   LineChart,
   ResponsiveContainer,
+  Sankey,
   Tooltip,
   XAxis,
   YAxis,
@@ -23,6 +24,7 @@ import {
   topMerchants,
 } from "../lib/chart";
 import { detectRecurring } from "../lib/recurring";
+import { buildMoneyFlow } from "../lib/flow";
 import { TIER_LABELS } from "../lib/tier";
 import {
   AXIS_STROKE,
@@ -51,6 +53,49 @@ function trailingYearBuckets(end: string): Bucket[] {
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return { start: mo.start, end: mo.end, label: `${MONTHS[mm - 1]}${mm === 1 ? ` ${String(yy).slice(2)}` : ""}` };
   });
+}
+
+const FLOW_NODE_FILL: Record<string, string> = {
+  Need: TIER_FILL.need,
+  Comfortable: TIER_FILL.comfortable,
+  Luxury: TIER_FILL.luxury,
+  Income: "#41684A",
+  "This period": "#1F261E",
+  Kept: "#41684A",
+  "From savings": "#B3362C",
+  "From investing": "#41684A",
+  "Repaid to you": "#41684A",
+  Uncategorized: "#8B9384",
+  Investing: "rgba(47,93,69,0.6)",
+  "Lent out": "rgba(47,93,69,0.6)",
+};
+
+/** Sankey node: thin rect in the ledger ramp + mono label beside it.
+ * Recharts injects geometry at render time. */
+function FlowNode(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  payload?: { name: string; value: number };
+  containerWidth?: number;
+}) {
+  const { x = 0, y = 0, width = 0, height = 0, payload, containerWidth = 0 } = props;
+  const rightSide = x > containerWidth / 2;
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height} fill={FLOW_NODE_FILL[payload?.name ?? ""] ?? "#2F5D45"} />
+      <text
+        x={rightSide ? x - 6 : x + width + 6}
+        y={y + height / 2}
+        textAnchor={rightSide ? "end" : "start"}
+        dominantBaseline="middle"
+        style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fill: "#4A5147" }}
+      >
+        {payload?.name}
+      </text>
+    </g>
+  );
 }
 
 export default function Trends() {
@@ -138,6 +183,16 @@ export default function Trends() {
 
   const recurring = useMemo(() => detectRecurring(yearRows).slice(0, 6), [yearRows]);
   const recurringTotal = recurring.reduce((a, c) => a + c.medianCents, 0);
+
+  const moneyFlow = useMemo(() => {
+    const flow = buildMoneyFlow(rows);
+    if (!flow) return null;
+    // Recharts Sankey wants plain numbers; keep dollars for readable tooltips.
+    return {
+      nodes: flow.nodes,
+      links: flow.links.map((l) => ({ ...l, value: Math.round(l.value) / 100 })),
+    };
+  }, [rows]);
 
   return (
     <div>
@@ -287,6 +342,44 @@ export default function Trends() {
           <span className="h-2.5 w-2.5 border" style={{ background: TIER_FILL.luxury, borderColor: LUXURY_STROKE }} /> Luxury
         </span>
       </div>
+
+      {/* Money flow (Sankey) */}
+      {moneyFlow && (
+        <>
+          <div className={`${label} mb-3.5`}>MONEY FLOW — WHERE THE PERIOD'S MONEY WENT</div>
+          <div className="mb-9">
+            <ChartFrame>
+              <ResponsiveContainer width="100%" height={260}>
+                <Sankey
+                  data={moneyFlow}
+                  nodeWidth={8}
+                  nodePadding={24}
+                  margin={{ top: 10, right: 120, bottom: 10, left: 10 }}
+                  link={{ stroke: "rgba(47,93,69,0.35)", fill: "rgba(47,93,69,0.18)" }}
+                  node={<FlowNode />}
+                >
+                  <Tooltip
+                    content={
+                      <PaperTooltip
+                        format={(payload) => {
+                          const p = payload[0] as { name?: string; value?: number | string; payload?: { source?: { name?: string }; target?: { name?: string }; name?: string } };
+                          const d = p.payload;
+                          const title = d?.source && d?.target ? `${d.source.name} → ${d.target.name}` : (d?.name ?? "");
+                          return (
+                            <span>
+                              {title}: ${Number(p.value ?? 0).toFixed(2)}
+                            </span>
+                          );
+                        }}
+                      />
+                    }
+                  />
+                </Sankey>
+              </ResponsiveContainer>
+            </ChartFrame>
+          </div>
+        </>
+      )}
 
       <div className="grid grid-cols-[1.4fr_1fr] gap-11">
         {/* Drill-down */}

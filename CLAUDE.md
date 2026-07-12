@@ -183,7 +183,17 @@ each phase.**
   key) + transactions CSV via native save dialog (`src/lib/export.ts`,
   `src/db/backup.ts`, `src/platform/exportFile.ts`); danger-zone wipe with
   typed confirmation.
-- [ ] **Deferred (skipped by user decision):** PDF ingestion via LLM
-  extraction into the same review pipeline (needs a per-file consent dialog
-  — the statement content itself goes to the API, unlike AI assist);
-  cash-flow forecast; Sankey money-flow view.
+- [x] **PDF ingestion:** LLM extraction (`buildExtractRequest`/
+  `parseExtractResponse` in `src/lib/ai.ts`) into the exact same
+  review/commit pipeline as CSV. Per-file consent dialog on the Upload
+  screen — the statement document itself goes to the API, so nothing is
+  sent until the user confirms each file. PDF uploads use the auto-created
+  "PDF import" bank profile row.
+- [x] **Cash-flow forecast:** straight-line 3-month projection on Overview
+  (`src/lib/forecast.ts`): income plan (or observed average) minus
+  recurring charges and trailing-3-month average other spend.
+- [x] **Sankey money-flow view:** on Trends (`src/lib/flow.ts` +
+  Recharts Sankey): income (and savings when overspent) → period hub →
+  tiers, uncategorized, investing, lent out, kept. Card payments excluded.
+
+The full spec is delivered. Nothing is deferred.

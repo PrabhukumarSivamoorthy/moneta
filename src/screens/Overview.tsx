@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatCents } from "../lib/money";
 import { groupByPerson } from "../lib/lending";
+import { forecast } from "../lib/forecast";
+import { isSpend } from "../lib/budget";
+import { detectRecurring } from "../lib/recurring";
 import { listAccounts, type Account } from "../db/repo/accounts";
+import { getAllSettings } from "../db/repo/settings";
 import { queryTransactions, type TxRow } from "../db/repo/transactions";
 
 const section =
@@ -21,14 +25,21 @@ const CARD_TYPES = new Set(["credit card"]);
 export default function Overview() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [lendingRows, setLendingRows] = useState<TxRow[]>([]);
+  const [allRows, setAllRows] = useState<TxRow[]>([]);
+  const [incomePlan, setIncomePlan] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const accts = await listAccounts();
-      // Lent & borrowed is all-time; pull the system-category rows.
-      const rows = await queryTransactions({ start: "0000-01-01", end: todayIso() });
+      const [accts, rows, settings] = await Promise.all([
+        listAccounts(),
+        // Lent & borrowed is all-time; the forecast reads recent history.
+        queryTransactions({ start: "0000-01-01", end: todayIso() }),
+        getAllSettings(),
+      ]);
       setLendingRows(rows.filter((r) => r.categoryIsSystem && r.categoryName === "Lent & borrowed"));
+      setAllRows(rows);
+      setIncomePlan(settings.income_plan_cents ? Number(settings.income_plan_cents) : null);
       setAccounts(accts);
       setError(null);
     } catch (e) {
@@ -62,6 +73,32 @@ export default function Overview() {
   );
 
   const netPosition = liquidTotal + investedTotal + lentNet - cardsOwed;
+
+  /** 3-month straight-line projection from the trailing 3 full months. */
+  const projection = useMemo(() => {
+    const today = todayIso();
+    const [y, m] = today.split("-").map(Number);
+    const monthKey = (offset: number) => {
+      const am = y * 12 + (m - 1) + offset;
+      return `${Math.floor(am / 12)}-${String((am % 12) + 1).padStart(2, "0")}`;
+    };
+    const historyMonths = new Set([monthKey(-3), monthKey(-2), monthKey(-1)]);
+    const history = allRows.filter((r) => historyMonths.has(r.date.slice(0, 7)));
+    const avgIncome = Math.round(
+      history.filter((r) => r.categoryIsSystem && r.categoryName === "Income" && r.amountCents > 0).reduce((a, r) => a + r.amountCents, 0) / 3,
+    );
+    const avgSpend = Math.round(history.filter(isSpend).reduce((a, r) => a + -r.amountCents, 0) / 3);
+    const recurringCents = detectRecurring(allRows).reduce((a, c) => a + c.medianCents, 0);
+    return forecast({
+      startingBalanceCents: liquidTotal,
+      plannedIncomeCents: incomePlan,
+      avgIncomeCents: avgIncome,
+      recurringCents,
+      avgOtherSpendCents: Math.max(0, avgSpend - recurringCents),
+      firstMonth: monthKey(1),
+      months: 3,
+    });
+  }, [allRows, liquidTotal, incomePlan]);
 
   const balanceNote = (a: Account) => (a.balanceAsOf ? `as of ${a.balanceAsOf}` : "not set");
 
@@ -141,7 +178,32 @@ export default function Overview() {
         <span className="text-right font-mono text-[13px] font-semibold text-danger">{formatCents(cardsOwed)}</span>
       </div>
 
-      <div className="mt-2 font-courier text-[10px] text-ink-faint">
+      {/* Cash-flow forecast */}
+      <div className={section}>CASH-FLOW FORECAST — NEXT 3 MONTHS</div>
+      <div className="mb-2 text-[11.5px] italic text-ink-faint">
+        Straight-line estimate: {incomePlan ? "your income plan" : "average income"} minus recurring charges and the
+        trailing-3-month average of other spending. Not a promise.
+      </div>
+      <div className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-3 border-b border-ink py-1.5 font-courier text-[10px] tracking-[0.14em] text-ink-mute">
+        <span>MONTH</span>
+        <span className="text-right">IN</span>
+        <span className="text-right">OUT</span>
+        <span className="text-right">NET</span>
+        <span className="text-right">PROJECTED LIQUID</span>
+      </div>
+      {projection.map((p) => (
+        <div key={p.month} className="grid grid-cols-[80px_1fr_1fr_1fr_1fr] gap-3 border-b border-[rgba(74,108,88,0.28)] py-[7px]">
+          <span className="font-mono text-[11px] text-ink-mute">{p.month}</span>
+          <span className="text-right font-mono text-[12px] text-[#41684A]">{formatCents(p.incomeCents)}</span>
+          <span className="text-right font-mono text-[12px]">{formatCents(p.outCents)}</span>
+          <span className={`text-right font-mono text-[12px] ${p.netCents < 0 ? "text-danger" : ""}`}>{formatCents(p.netCents)}</span>
+          <span className={`text-right font-mono text-[12.5px] font-semibold ${p.projectedBalanceCents < 0 ? "text-danger" : ""}`}>
+            {formatCents(p.projectedBalanceCents)}
+          </span>
+        </div>
+      ))}
+
+      <div className="mt-5 font-courier text-[10px] text-ink-faint">
         Balances are entered manually — update them in Settings → Accounts after each statement.
       </div>
     </div>

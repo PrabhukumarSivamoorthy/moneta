@@ -19,6 +19,8 @@ import { createUpload } from "../db/repo/uploads";
 import { existingHashes, insertImported } from "../db/repo/transactions";
 import { listRules } from "../db/repo/rules";
 import { applyRules } from "../lib/rules";
+import { extractStatementPdf } from "../lib/ai";
+import { getApiKey } from "../platform/apiKey";
 
 type Step = "a" | "b" | "c";
 
@@ -26,6 +28,16 @@ interface LoadedFile {
   name: string;
   text: string;
 }
+
+interface PendingPdf {
+  name: string;
+  sizeBytes: number;
+  base64: string;
+}
+
+/** PDF imports still need an uploads.bank_profile_id row; a stub profile
+ * named "PDF import" is created on first use. */
+const PDF_PROFILE_NAME = "PDF import";
 
 interface ReviewRow {
   line: number;
@@ -274,6 +286,12 @@ export default function Upload() {
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  /** PDF awaiting per-file consent — nothing is sent until confirmed. */
+  const [pendingPdf, setPendingPdf] = useState<PendingPdf | null>(null);
+  const [pdfParsed, setPdfParsed] = useState<ParseResult | null>(null);
+  const [pdfName, setPdfName] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
+
   const [reviewRows, setReviewRows] = useState<ReviewRow[] | null>(null);
   const [committing, setCommitting] = useState(false);
   const [summary, setSummary] = useState<CommitSummary | null>(null);
@@ -297,14 +315,66 @@ export default function Upload() {
   const profile = profiles.find((p) => p.id === profileId) ?? null;
 
   /** Parse eagerly whenever file + profile are both present. */
-  const parsed: ParseResult | null = useMemo(() => {
+  const csvParsed: ParseResult | null = useMemo(() => {
     if (!file || !profile) return null;
     return parseStatement(file.text, profile);
   }, [file, profile]);
 
+  const parsed = pdfParsed ?? csvParsed;
+  const sourceName = pdfName ?? file?.name ?? null;
+
   const loadFile = async (f: File) => {
+    if (/\.pdf$/i.test(f.name)) {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 0x8000) {
+        bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      }
+      setPendingPdf({ name: f.name, sizeBytes: buf.length, base64: btoa(bin) });
+      setFile(null);
+      setPdfParsed(null);
+      setPdfName(null);
+      return;
+    }
     const text = await f.text();
     setFile({ name: f.name, text });
+    setPdfParsed(null);
+    setPdfName(null);
+    setPendingPdf(null);
+  };
+
+  /** Runs ONLY from the consent dialog's confirm button. */
+  const extractPdf = async () => {
+    if (!pendingPdf) return;
+    setExtracting(true);
+    try {
+      const key = await getApiKey();
+      if (!key) {
+        setDbError("PDF extraction needs an Anthropic API key — add one in Settings → AI categorization assist.");
+        return;
+      }
+      const result = await extractStatementPdf(key, pendingPdf.base64);
+      setPdfParsed(result);
+      setPdfName(pendingPdf.name);
+      setPendingPdf(null);
+      setDbError(null);
+    } catch (e) {
+      setDbError(String(e));
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const ensurePdfProfileId = async (): Promise<number> => {
+    const existing = profiles.find((p) => p.name === PDF_PROFILE_NAME);
+    if (existing) return existing.id;
+    const created = await createBankProfile(PDF_PROFILE_NAME, {
+      delimiter: ",",
+      dateFormat: "YYYY-MM-DD",
+      columnMap: { date: "Date", description: "Description", amount: "Amount" },
+      signConvention: "debits_negative",
+    });
+    return created.id;
   };
 
   const toReview = async () => {
@@ -332,7 +402,8 @@ export default function Upload() {
   };
 
   const commit = async () => {
-    if (!reviewRows || !file || accountId === null || profileId === null) return;
+    if (!reviewRows || !sourceName || accountId === null) return;
+    if (pdfParsed === null && profileId === null) return;
     setCommitting(true);
     try {
       const included = reviewRows.filter((r) => r.include);
@@ -345,10 +416,11 @@ export default function Upload() {
         dedupHash: r.flags.hash,
         categoryId: applyRules(rules, r.merchantNormalized),
       }));
-      const uploadId = await createUpload(accountId, profileId, file.name, included.length);
+      const uploadProfileId = pdfParsed !== null ? await ensurePdfProfileId() : profileId!;
+      const uploadId = await createUpload(accountId, uploadProfileId, sourceName, included.length);
       await insertImported(uploadId, accountId, rows);
       setSummary({
-        filename: file.name,
+        filename: sourceName,
         inserted: included.length,
         skippedDuplicates: reviewRows.filter((r) => !r.include).length,
         failedRows: parsed?.errors.length ?? 0,
@@ -364,6 +436,9 @@ export default function Upload() {
 
   const reset = () => {
     setFile(null);
+    setPendingPdf(null);
+    setPdfParsed(null);
+    setPdfName(null);
     setReviewRows(null);
     setSummary(null);
     setStep("a");
@@ -390,7 +465,36 @@ export default function Upload() {
             {/* Statement file */}
             <div>
               <div className={label}>STATEMENT FILE</div>
-              {!file ? (
+              {pendingPdf ? (
+                <div className="border-[1.5px] border-dashed border-danger/50 bg-danger/[0.04] px-4 py-4">
+                  <div className="mb-2 font-courier text-[10px] tracking-[0.15em] text-danger">
+                    PDF EXTRACTION — SENDS THE STATEMENT TO ANTHROPIC
+                  </div>
+                  <div className="mb-1 font-mono text-[12.5px]">
+                    {pendingPdf.name} · {(pendingPdf.sizeBytes / 1024).toFixed(0)} KB
+                  </div>
+                  <div className="mb-3 text-[12px] italic leading-[1.6] text-ink-mute">
+                    Reading a PDF needs the model to see it: the full document — every transaction, name, and number on
+                    it — will be sent once to api.anthropic.com for extraction. Nothing is sent until you confirm, and
+                    the extracted rows still pass your review before entering the ledger.
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => void extractPdf()}
+                      disabled={extracting}
+                      className="cursor-pointer border-0 bg-ink px-3.5 py-2 font-courier text-[11px] font-bold text-paper hover:bg-accent disabled:bg-ink/15 disabled:text-ink-mute"
+                    >
+                      {extracting ? "Extracting…" : "Send & extract"}
+                    </button>
+                    <span
+                      onClick={() => setPendingPdf(null)}
+                      className="cursor-pointer font-courier text-[11px] text-ink-mute underline hover:text-ink"
+                    >
+                      cancel — nothing was sent
+                    </span>
+                  </div>
+                </div>
+              ) : !file && !pdfParsed ? (
                 <div
                   onClick={() => fileInput.current?.click()}
                   onDragOver={(e) => {
@@ -408,13 +512,15 @@ export default function Upload() {
                     dragOver ? "bg-accent/10" : "bg-accent/[0.03] hover:bg-accent/[0.08]"
                   }`}
                 >
-                  <div className="mb-2.5 font-courier text-[11px] tracking-[0.15em] text-accent">.CSV</div>
-                  <div className="mb-1 text-[14px] font-medium">Drop a CSV statement here</div>
-                  <div className="text-[12px] italic text-ink-mute">or click to browse files</div>
+                  <div className="mb-2.5 font-courier text-[11px] tracking-[0.15em] text-accent">.CSV · .PDF</div>
+                  <div className="mb-1 text-[14px] font-medium">Drop a statement here</div>
+                  <div className="text-[12px] italic text-ink-mute">
+                    or click to browse — CSV parses locally; PDF asks before anything is sent for extraction
+                  </div>
                   <input
                     ref={fileInput}
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".csv,text/csv,.pdf,application/pdf"
                     className="hidden"
                     onChange={(e) => {
                       const f = e.target.files?.[0];
@@ -426,13 +532,16 @@ export default function Upload() {
               ) : (
                 <div className="border border-accent/50 bg-accent/5 px-4 py-4">
                   <div className="flex items-center gap-3">
-                    <span className="border border-accent/50 px-1.5 py-0.5 font-courier text-[10px] text-accent">CSV</span>
+                    <span className="border border-accent/50 px-1.5 py-0.5 font-courier text-[10px] text-accent">
+                      {pdfParsed ? "PDF" : "CSV"}
+                    </span>
                     <div className="flex-1">
-                      <div className="font-mono text-[12.5px]">{file.name}</div>
+                      <div className="font-mono text-[12.5px]">{sourceName}</div>
                       <div className="mt-0.5 text-[11.5px] italic text-ink-mute">
                         {parsed ? (
                           <>
-                            <span className="font-mono not-italic">{parsed.rows.length}</span> rows parsed ·{" "}
+                            <span className="font-mono not-italic">{parsed.rows.length}</span> rows{" "}
+                            {pdfParsed ? "extracted" : "parsed"} ·{" "}
                             <span className="font-mono not-italic">{parsed.errors.length}</span> rows failed
                           </>
                         ) : (
@@ -441,7 +550,11 @@ export default function Upload() {
                       </div>
                     </div>
                     <span
-                      onClick={() => setFile(null)}
+                      onClick={() => {
+                        setFile(null);
+                        setPdfParsed(null);
+                        setPdfName(null);
+                      }}
                       className="cursor-pointer font-courier text-[11px] text-ink-mute underline hover:text-danger"
                     >
                       remove
