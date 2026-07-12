@@ -50,6 +50,8 @@ flowchart LR
         direction TB
         sqlplugin["tauri-plugin-sql\nruns migrations, executes SQL"]
         dialogplugin["tauri-plugin-dialog\nnative save dialog"]
+        logplugin["tauri-plugin-log\nfile + stdout logging"]
+        single["tauri-plugin-single-instance\none process per machine"]
         commands["Custom commands\nget/set_api_key · write_text_file"]
     end
 
@@ -357,3 +359,34 @@ CI (`.github/workflows/build.yml`):
 The app icon is generated from a single `app-icon.png` (1024×1024) at the
 repo root via `npx tauri icon app-icon.png`, which writes every platform
 size into `src-tauri/icons/`.
+
+## 10. Logs & troubleshooting
+
+Where the logs are:
+
+| Context | Location |
+| --- | --- |
+| Packaged app, macOS | `~/Library/Logs/com.moneta.app/moneta.log` |
+| Packaged app, Windows | `%LOCALAPPDATA%\com.moneta.app\logs\moneta.log` |
+| `npm run tauri dev` | same file, plus the terminal (stdout) and the webview devtools console |
+
+What gets logged:
+
+- **Every failed SQL statement** — `src/db/client.ts` wraps the single
+  shared connection's `select`/`execute`, so any database error is written
+  with the failing query text before it reaches the UI. This is the first
+  place to look for errors like `database is locked`.
+- Uncaught window errors and unhandled promise rejections (`src/main.tsx`).
+- Rust-side plugin/log output. Log files rotate at ~2 MB.
+
+Known pitfall — **"database is locked" (SQLite code 5)**:
+
+1. The SQL plugin executes statements on a connection *pool*. Manual
+   `BEGIN`/`COMMIT` statements are therefore forbidden in this codebase —
+   they can run on *different* pooled connections and leave a stray open
+   write-transaction holding the file lock. Multi-row work uses single
+   atomic `INSERT … VALUES (…), (…), …` statements instead, and dedup
+   hashes make any retry safe.
+2. Two app processes sharing one database file cause the same error —
+   `tauri-plugin-single-instance` now focuses the existing window instead
+   of launching a second process.

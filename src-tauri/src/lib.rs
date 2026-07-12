@@ -65,6 +65,28 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
+        // Must be registered first: a second launch focuses the existing
+        // window instead of opening another process — two processes writing
+        // one SQLite file is how "database is locked" happens.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+        }))
+        // File + console logging. Release builds write to the platform log
+        // dir (macOS: ~/Library/Logs/com.moneta.app/moneta.log).
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("moneta".into()),
+                    }),
+                ])
+                .max_file_size(2_000_000)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(

@@ -188,12 +188,18 @@ export async function existingHashes(accountId: number): Promise<Set<string>> {
   return new Set(rows.map((r) => r.dedup_hash));
 }
 
-const CHUNK = 100;
+// SQLite allows 32766 bound parameters; 10 per row keeps any realistic
+// statement import in ONE atomic INSERT.
+const CHUNK = 3000;
 
 /**
- * Insert a batch of imported transactions atomically. Rows land
- * uncategorized (`categorization_source = 'none'`); the rules engine and
- * AI assist categorize in later phases.
+ * Insert a batch of imported transactions. Each multi-row INSERT statement
+ * is atomic on its own. Deliberately NO BEGIN/COMMIT here: the SQL plugin
+ * runs statements on a connection POOL, so BEGIN and COMMIT can land on
+ * different connections and leave a stray open write-transaction holding
+ * the file lock ("database is locked", code 5). A failure between chunks
+ * is safe to retry — dedup hashes make the re-import skip everything that
+ * already landed.
  */
 export async function insertImported(
   uploadId: number,
@@ -202,8 +208,7 @@ export async function insertImported(
 ): Promise<number> {
   const db = await getDb();
   const createdAt = new Date().toISOString();
-  await db.execute("BEGIN");
-  try {
+  {
     for (let start = 0; start < rows.length; start += CHUNK) {
       const chunk = rows.slice(start, start + CHUNK);
       const placeholders: string[] = [];
@@ -231,10 +236,6 @@ export async function insertImported(
         params,
       );
     }
-    await db.execute("COMMIT");
-  } catch (e) {
-    await db.execute("ROLLBACK");
-    throw e;
   }
   return rows.length;
 }

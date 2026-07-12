@@ -8,6 +8,7 @@
     "opener:default",
     "sql:default",
     "sql:allow-execute",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "log:default"
   ]
 }

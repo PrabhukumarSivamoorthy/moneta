@@ -49,18 +49,16 @@ export async function gatherBackupData(): Promise<BackupData> {
  * Deletes every transaction, upload, budget, rule, goal, bank profile, and
  * account. Categories and settings survive so a fresh start keeps the
  * defaults. There is no cloud copy to restore from — callers must confirm.
+ *
+ * No BEGIN/COMMIT: the SQL plugin pools connections, so a manual
+ * transaction can leave a stray lock (see insertImported). Tables are
+ * deleted children-first so a failure mid-way never violates a foreign key,
+ * and re-running the wipe simply finishes the job.
  */
 export async function wipeAllData(): Promise<void> {
   const db = await getDb();
-  await db.execute("BEGIN");
-  try {
-    for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "bank_profiles", "accounts"]) {
-      await db.execute(`DELETE FROM ${table}`);
-    }
-    await db.execute("DELETE FROM settings WHERE key = 'recurring_stopped'");
-    await db.execute("COMMIT");
-  } catch (e) {
-    await db.execute("ROLLBACK");
-    throw e;
+  for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "bank_profiles", "accounts"]) {
+    await db.execute(`DELETE FROM ${table}`);
   }
+  await db.execute("DELETE FROM settings WHERE key = 'recurring_stopped'");
 }

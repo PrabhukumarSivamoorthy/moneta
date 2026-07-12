@@ -102,7 +102,15 @@ screens (src/screens)  →  state (src/state)  →  repos (src/db/repo)  →  SQ
   rules, period math, tier math, money. No Tauri, no DOM, no React imports.
   Everything here has Vitest coverage. No business logic buried in components.
 - **`src/db/repo`** — thin repository layer; the ONLY place SQL strings live.
-  `src/db/client.ts` owns the single `Database.load` connection.
+  `src/db/client.ts` owns the single `Database.load` connection and logs
+  every failed statement (with the query) to the app log file.
+- **Never use manual `BEGIN`/`COMMIT`** through the SQL plugin — it pools
+  connections, so the transaction statements can land on different
+  connections and deadlock the file ("database is locked"). Use single
+  atomic multi-row statements; dedup hashes make retries safe.
+- **Logs**: `~/Library/Logs/com.moneta.app/moneta.log` (macOS) /
+  `%LOCALAPPDATA%\com.moneta.app\logs` (Windows). See
+  `docs/ARCHITECTURE.md` §10.
 - **`src/state`** — app-wide React state (global period filter, settings
   cache). Selection only; math belongs in `src/lib`.
 - **`src-tauri/migrations`** — numbered `.sql` files, embedded via
