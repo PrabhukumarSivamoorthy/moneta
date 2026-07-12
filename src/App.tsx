@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   PeriodProvider,
   usePeriod,
@@ -18,7 +18,7 @@ import Recurring from "./screens/Recurring";
 import Transfers from "./screens/Transfers";
 import Settings from "./screens/Settings";
 
-type ScreenId =
+export type ScreenId =
   | "overview"
   | "dashboard"
   | "earnings"
@@ -31,6 +31,13 @@ type ScreenId =
   | "recurring"
   | "transfers"
   | "settings";
+
+const NavContext = createContext<(screen: ScreenId) => void>(() => {});
+
+/** Navigate between screens from within a screen (e.g. "edit budgets"). */
+export function useNavigate() {
+  return useContext(NavContext);
+}
 
 interface NavEntry {
   id: ScreenId;
@@ -248,14 +255,16 @@ function Shell() {
       </div>
 
       {/* Main column */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {active.periodBar && <PeriodBar />}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="relative mx-auto max-w-[1180px] px-11 pb-[70px] pl-[58px] pt-[30px]">
-            {active.screen}
+      <NavContext.Provider value={setScreen}>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {active.periodBar && <PeriodBar />}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="relative mx-auto max-w-[1180px] px-11 pb-[70px] pl-[58px] pt-[30px]">
+              {active.screen}
+            </div>
           </div>
         </div>
-      </div>
+      </NavContext.Provider>
     </div>
   );
 }

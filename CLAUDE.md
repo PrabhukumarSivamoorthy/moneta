@@ -151,9 +151,12 @@ each phase.**
 - [x] **Phase 3 — Budgets:** per-category monthly budgets, 80%/100%
   thresholds, month switcher (via the global period bar), copy-last-month;
   tier targets editor (sum-to-100 validation); prorated weekly pace.
-- [ ] **Phase 4 — Dashboard + Trends:** period overview with alerts and
+- [x] **Phase 4 — Dashboard + Trends:** period overview with alerts and
   tier-mix module; per-category trend chart with adaptive bucketing and
   drill-down; tier composition stacked-area with Luxury-share change.
+  Chart primitives live in `src/components/charts.tsx` (tier ramp, dash-
+  pattern series identity, paper tooltips); bucketed aggregation in
+  `src/lib/chart.ts`.
 - [ ] **Phase 5 — AI assist (opt-in) + subscription detection.**
 - [ ] **Phase 6 — PDF ingestion** via LLM extraction feeding the same review
   pipeline; cash-flow forecast; Sankey money-flow view; backup/export.
