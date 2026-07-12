@@ -157,6 +157,9 @@ each phase.**
   Chart primitives live in `src/components/charts.tsx` (tier ramp, dash-
   pattern series identity, paper tooltips); bucketed aggregation in
   `src/lib/chart.ts`.
-- [ ] **Phase 5 — AI assist (opt-in) + subscription detection.**
+- [x] **Phase 5 — AI assist (opt-in) + subscription detection.** Key lives
+  in a secret file via Rust commands (`src/platform/apiKey.ts`); request
+  builder/parser in `src/lib/ai.ts` (only merchant+amount ever sent);
+  detection in `src/lib/recurring.ts`.
 - [ ] **Phase 6 — PDF ingestion** via LLM extraction feeding the same review
   pipeline; cash-flow forecast; Sankey money-flow view; backup/export.

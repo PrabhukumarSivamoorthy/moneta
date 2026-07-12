@@ -5,6 +5,7 @@ import { effectiveTier, TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { listAccounts, type Account } from "../db/repo/accounts";
 import { listCategories, type Category } from "../db/repo/categories";
 import { createRule } from "../db/repo/rules";
+import { getAllSettings } from "../db/repo/settings";
 import {
   queryTransactions,
   setTierOverride,
@@ -12,6 +13,8 @@ import {
   setTransactionsCategory,
   type TxRow,
 } from "../db/repo/transactions";
+import { suggestCategories } from "../lib/ai";
+import { getApiKey } from "../platform/apiKey";
 
 type SortKey = "date" | "amount" | "merchant";
 type TierFilter = "all" | Tier | "untiered";
@@ -44,9 +47,14 @@ export default function Transactions() {
   const [bulkCategory, setBulkCategory] = useState<number | "">("");
   const [ruleOffer, setRuleOffer] = useState<RuleOffer | null>(null);
 
+  const [aiEnabled, setAiEnabled] = useState(false);
+  /** AI suggestions under review: transaction id → suggested categoryId. */
+  const [suggestions, setSuggestions] = useState<Map<number, number>>(new Map());
+  const [suggesting, setSuggesting] = useState(false);
+
   const load = useCallback(async () => {
     try {
-      const [txs, accts, cats] = await Promise.all([
+      const [txs, accts, cats, settings] = await Promise.all([
         queryTransactions({
           start: period.start,
           end: period.end,
@@ -58,10 +66,12 @@ export default function Transactions() {
         }),
         listAccounts(),
         listCategories(),
+        getAllSettings(),
       ]);
       setRows(txs);
       setAccounts(accts);
       setCategories(cats);
+      setAiEnabled(settings.ai_assist_enabled === "1");
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -98,6 +108,51 @@ export default function Transactions() {
     }
     return { out, in: inn };
   }, [visible]);
+
+  /** Batch all uncategorized rows through the AI. Results are suggestions
+   * only — each needs an explicit accept below. */
+  const runSuggest = async () => {
+    setSuggesting(true);
+    try {
+      const key = await getApiKey();
+      if (!key) {
+        setError("AI assist is on but no API key is saved — add one in Settings.");
+        return;
+      }
+      const uncategorized = (rows ?? []).filter((r) => r.categoryId === null);
+      const byName = new Map(categories.map((c) => [c.name, c.id]));
+      const result = await suggestCategories(
+        key,
+        uncategorized.map((r) => ({ id: r.id, merchant: r.merchantNormalized, amountCents: r.amountCents })),
+        categories.map((c) => c.name),
+      );
+      const next = new Map<number, number>();
+      for (const [id, catName] of result) {
+        const catId = byName.get(catName);
+        if (catId !== undefined) next.set(id, catId);
+      }
+      setSuggestions(next);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const acceptSuggestion = async (id: number, categoryId: number) => {
+    try {
+      await setTransactionCategory(id, categoryId, "ai");
+      setSuggestions((s) => {
+        const next = new Map(s);
+        next.delete(id);
+        return next;
+      });
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const recategorize = async (row: TxRow, categoryId: number | null) => {
     try {
@@ -145,6 +200,16 @@ export default function Transactions() {
           >
             {uncategorizedCount} UNCATEGORIZED
           </span>
+        )}
+        {aiEnabled && uncategorizedCount > 0 && (
+          <button
+            className="cursor-pointer border-0 bg-ink px-2.5 py-1 font-courier text-[10.5px] font-bold text-paper hover:bg-accent disabled:bg-ink/15 disabled:text-ink-mute"
+            disabled={suggesting}
+            onClick={() => void runSuggest()}
+            title="Sends only merchant names and amounts; suggestions still need your approval"
+          >
+            {suggesting ? "Asking…" : "Suggest categories (AI)"}
+          </button>
         )}
       </div>
       <div className="mb-5 text-[12.5px] italic text-ink-mute">
@@ -203,6 +268,29 @@ export default function Transactions() {
           <option value="untiered">No tier (uncategorized)</option>
         </select>
       </div>
+
+      {/* AI suggestions under review */}
+      {suggestions.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 border border-accent/50 bg-accent/5 px-4 py-2.5">
+          <span className="font-courier text-[9.5px] tracking-[0.12em] text-accent">AI SUGGESTIONS</span>
+          <span className="text-[13px]">
+            {suggestions.size} suggestion{suggestions.size === 1 ? "" : "s"} below — accept each with ✓, or
+          </span>
+          <button
+            className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90"
+            onClick={async () => {
+              for (const [id, catId] of [...suggestions]) {
+                await acceptSuggestion(id, catId);
+              }
+            }}
+          >
+            Accept all
+          </button>
+          <span className="cursor-pointer font-courier text-[11px] text-ink-mute underline" onClick={() => setSuggestions(new Map())}>
+            dismiss all
+          </span>
+        </div>
+      )}
 
       {/* Rule offer after a manual correction */}
       {ruleOffer && (
@@ -347,6 +435,38 @@ export default function Transactions() {
                     {r.categorizationSource === "rule" && r.categoryId !== null && (
                       <span className="ml-1.5 font-courier text-[9px] tracking-[0.08em] text-ink-faint" title="Categorized by a rule">
                         RULE
+                      </span>
+                    )}
+                    {r.categorizationSource === "ai" && r.categoryId !== null && (
+                      <span className="ml-1.5 font-courier text-[9px] tracking-[0.08em] text-ink-faint" title="Categorized by AI assist (you accepted the suggestion)">
+                        AI
+                      </span>
+                    )}
+                    {r.categoryId === null && suggestions.has(r.id) && (
+                      <span className="mt-1 flex items-center gap-1.5">
+                        <span className="border border-accent/50 bg-accent/5 px-1.5 py-0.5 font-courier text-[10px] text-accent">
+                          → {categories.find((c) => c.id === suggestions.get(r.id))?.name}
+                        </span>
+                        <span
+                          className="cursor-pointer font-courier text-[11px] font-bold text-accent hover:text-ink"
+                          title="Accept suggestion"
+                          onClick={() => void acceptSuggestion(r.id, suggestions.get(r.id)!)}
+                        >
+                          ✓
+                        </span>
+                        <span
+                          className="cursor-pointer font-courier text-[11px] text-ink-mute hover:text-danger"
+                          title="Reject suggestion"
+                          onClick={() =>
+                            setSuggestions((s) => {
+                              const next = new Map(s);
+                              next.delete(r.id);
+                              return next;
+                            })
+                          }
+                        >
+                          ✗
+                        </span>
                       </span>
                     )}
                   </td>

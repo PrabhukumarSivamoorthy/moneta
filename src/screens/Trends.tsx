@@ -22,6 +22,7 @@ import {
   tierSpendByBucket,
   topMerchants,
 } from "../lib/chart";
+import { detectRecurring } from "../lib/recurring";
 import { TIER_LABELS } from "../lib/tier";
 import {
   AXIS_STROKE,
@@ -134,6 +135,9 @@ export default function Trends() {
     [yearRows, activeDrillCat],
   );
   const drillMax = Math.max(...drillTop.map((m) => m.cents), 1);
+
+  const recurring = useMemo(() => detectRecurring(yearRows).slice(0, 6), [yearRows]);
+  const recurringTotal = recurring.reduce((a, c) => a + c.medianCents, 0);
 
   return (
     <div>
@@ -350,14 +354,28 @@ export default function Trends() {
           </div>
         </div>
 
-        {/* Recurring (Phase 5) */}
+        {/* Recurring */}
         <div className="border-t border-rule pt-3.5">
-          <div className={`${label} mb-2.5`}>RECURRING</div>
-          <div className="border border-dashed border-rule px-4 py-6 text-center">
-            <div className="font-courier text-[11px] tracking-[0.15em] text-accent">PHASE 5</div>
-            <div className="mt-1.5 text-[12px] italic text-ink-mute">
-              Subscription detection (≥3 charges, matching merchant, ~monthly cadence) arrives in phase 5.
+          <div className="mb-2.5 flex items-baseline justify-between">
+            <div className={label}>RECURRING</div>
+            <div className="font-mono text-[11.5px] text-ink-mute">{formatCents(recurringTotal)} /mo</div>
+          </div>
+          {recurring.map((c) => (
+            <div key={c.merchant} className="flex items-center gap-2.5 border-b border-[rgba(74,108,88,0.28)] py-[7px] hover:bg-ink/[0.035]">
+              <div className="flex-1">
+                <div className="text-[13px]">{c.merchant}</div>
+                <div className="mt-px text-[10.5px] italic text-ink-faint">monthly · next {c.nextDate}</div>
+              </div>
+              <span className="font-mono text-[12px]">{formatCents(c.medianCents)}</span>
             </div>
+          ))}
+          {recurring.length === 0 && (
+            <div className="py-3 text-[12px] italic text-ink-faint">
+              Nothing looks recurring yet — detection needs ≥3 matching monthly charges.
+            </div>
+          )}
+          <div className="mt-3 text-[11px] italic leading-[1.6] text-ink-faint">
+            Detected from ≥3 charges with matching merchant and amount. Manage on the Recurring screen.
           </div>
         </div>
       </div>

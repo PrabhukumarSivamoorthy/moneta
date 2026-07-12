@@ -25,6 +25,7 @@ import {
   queryTransactions,
 } from "../db/repo/transactions";
 import { budgetsForMonths, copyBudgets, setBudget } from "../db/repo/budgets";
+import { getApiKey, setApiKey } from "../platform/apiKey";
 
 const FIXTURE_CSV = `Transaction Date,Description,Amount
 07/11/2026,WHOLEFDS #10233 SEATTLE WA,-84.27
@@ -117,6 +118,17 @@ export async function runE2eImport(): Promise<void> {
         .join(", ")}`,
     );
   }
+
+  // API-key storage round-trip (Rust command + secret file, not the DB).
+  await setApiKey("sk-ant-e2e-test");
+  const readBack = await getApiKey();
+  await setApiKey(""); // delete
+  const afterDelete = await getApiKey();
+  const keyOk = readBack === "sk-ant-e2e-test" && afterDelete === null;
+  log(`apiKey roundTrip=${keyOk}`);
+  // Persist the verdict so the harness can read it from outside the webview.
+  const { setSetting } = await import("../db/repo/settings");
+  await setSetting("e2e_api_key_roundtrip", keyOk ? "ok" : "fail");
 
   log("RESULT", {
     inserted: after - before,
