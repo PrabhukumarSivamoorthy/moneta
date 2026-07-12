@@ -26,6 +26,24 @@ AI request bodies are captured on `window.__executed` / `__written` /
 First `tauri dev`/`build` compiles the Rust crate and takes several minutes;
 subsequent runs are incremental.
 
+## Testing discipline — every change gets tested, no exceptions
+
+No change is done until it has been verified. Before claiming any change
+complete or committing it:
+
+1. **Always run** `npm run typecheck` and `npm test`.
+2. **New or changed logic** in `src/lib` requires new/updated Vitest specs
+   in the same change — pure modules never ship untested.
+3. **UI or flow changes** (screens, repos, IPC): run `npm run test:e2e`,
+   and extend the Playwright suite (`e2e/*.spec.ts`) to cover the new
+   behavior. The stub in `e2e/support/tauri-stub.js` may need new dataset
+   rows or invoke handlers.
+4. **Rust or migration changes**: `cargo check` in `src-tauri`, then launch
+   `npm run tauri dev` and confirm the migration applies / command works
+   against the real SQLite database.
+5. Report actual results (test counts, failures) — never assert success
+   without having run the commands.
+
 ## Locked stack decisions — do not revisit
 
 - **Shell:** Tauri 2 + React + TypeScript (strict) + Vite. Tailwind CSS v4
