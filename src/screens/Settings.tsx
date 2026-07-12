@@ -8,6 +8,10 @@ import { listCategories, updateCategory, type Category } from "../db/repo/catego
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
 import { getApiKey, setApiKey } from "../platform/apiKey";
+import { gatherBackupData, wipeAllData } from "../db/backup";
+import { buildBackup, buildTransactionsCsv } from "../lib/export";
+import { queryTransactions } from "../db/repo/transactions";
+import { exportTextFile } from "../platform/exportFile";
 
 const section =
   "font-courier text-[10.5px] tracking-[0.2em] text-ink-mute border-t border-rule pt-3 mb-3 flex items-center justify-between";
@@ -30,6 +34,10 @@ export default function Settings() {
   const [ruleMatcher, setRuleMatcher] = useState("");
   const [ruleType, setRuleType] = useState<MatchType>("contains");
   const [ruleCat, setRuleCat] = useState<number | "">("");
+
+  const [exportNote, setExportNote] = useState<string | null>(null);
+  const [wipeConfirm, setWipeConfirm] = useState(false);
+  const [wipeText, setWipeText] = useState("");
 
   const aiEnabled = settings.ai_assist_enabled === "1";
 
@@ -339,11 +347,103 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Backup — Phase 6 */}
+      {/* Backup & export */}
       <div className={section}>BACKUP &amp; EXPORT</div>
-      <div className="mb-8 border border-dashed border-rule px-4 py-5 text-center">
-        <div className="font-courier text-[11px] tracking-[0.15em] text-accent">PHASE 6</div>
-        <div className="mt-1 text-[12px] italic text-ink-mute">JSON backup and CSV export arrive in phase 6.</div>
+      <div className={note}>
+        Everything lives in one local file. Exports include all transactions, budgets, tiers, and rules — never the
+        API key.
+      </div>
+      <div className="mb-2 flex gap-2.5">
+        <button
+          className="cursor-pointer border border-ink/40 bg-transparent px-3.5 py-2 font-courier text-[11.5px] text-ink hover:bg-ink/[0.06]"
+          onClick={async () => {
+            try {
+              const data = await gatherBackupData();
+              const path = await exportTextFile(
+                `moneta-backup-${new Date().toISOString().slice(0, 10)}.json`,
+                buildBackup({ exportedAt: new Date().toISOString(), ...data }),
+              );
+              setExportNote(path ? `✓ backup saved to ${path}` : null);
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        >
+          Export JSON backup
+        </button>
+        <button
+          className="cursor-pointer border border-ink/40 bg-transparent px-3.5 py-2 font-courier text-[11.5px] text-ink hover:bg-ink/[0.06]"
+          onClick={async () => {
+            try {
+              const rows = await queryTransactions({ start: "0000-01-01", end: "9999-12-31", sortKey: "date", sortDir: "asc" });
+              const path = await exportTextFile(
+                `moneta-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+                buildTransactionsCsv(rows),
+              );
+              setExportNote(path ? `✓ ${rows.length} transactions saved to ${path}` : null);
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        >
+          Export transactions CSV
+        </button>
+      </div>
+      {exportNote && <div className="mb-8 font-courier text-[11px] text-accent">{exportNote}</div>}
+      {!exportNote && <div className="mb-8" />}
+
+      {/* Danger zone */}
+      <div className="border-l-[3px] border-danger bg-danger/5 px-4 py-3.5">
+        <div className="mb-2 font-courier text-[10.5px] tracking-[0.2em] text-danger">DANGER ZONE</div>
+        <div className="mb-3 text-[12px] italic text-ink-mute">
+          Deletes every transaction, budget, rule, goal, and profile from this Mac. There is no cloud copy to restore
+          from — export a backup first.
+        </div>
+        {!wipeConfirm ? (
+          <button
+            className="cursor-pointer border border-danger/60 bg-transparent px-3.5 py-2 font-courier text-[11.5px] text-danger hover:bg-danger/10"
+            onClick={() => setWipeConfirm(true)}
+          >
+            Wipe all data…
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[12px] italic text-ink-mute">
+              Type <span className="font-mono not-italic text-danger">WIPE</span> to confirm:
+            </span>
+            <input
+              className="w-24 border-0 border-b border-danger/60 bg-transparent px-0.5 py-1 font-mono text-[12px] text-ink focus:border-danger"
+              value={wipeText}
+              onChange={(e) => setWipeText(e.target.value)}
+            />
+            <button
+              className="cursor-pointer border-0 bg-danger px-3.5 py-2 font-courier text-[11.5px] font-bold text-paper hover:bg-danger/85 disabled:bg-ink/15 disabled:text-ink-mute"
+              disabled={wipeText !== "WIPE"}
+              onClick={async () => {
+                try {
+                  await wipeAllData();
+                  setWipeConfirm(false);
+                  setWipeText("");
+                  setExportNote(null);
+                  await load();
+                } catch (e) {
+                  setError(String(e));
+                }
+              }}
+            >
+              Erase everything
+            </button>
+            <span
+              className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+              onClick={() => {
+                setWipeConfirm(false);
+                setWipeText("");
+              }}
+            >
+              cancel
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

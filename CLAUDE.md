@@ -179,7 +179,11 @@ each phase.**
   Lent & Borrowed (per-person balances from the system category), Goals &
   Loans (savings goals + amortization calculator in `src/lib/loan.ts`),
   Transfers & Investing.
-- [ ] **Phase 6b — PDF ingestion** via LLM extraction feeding the same
-  review pipeline (per-file consent dialog — the statement content itself
-  goes to the API, unlike AI assist); cash-flow forecast; Sankey money-flow
-  view; backup/export (JSON + CSV) and the danger-zone wipe.
+- [x] **Backup & export:** JSON backup (versioned, full dump, never the API
+  key) + transactions CSV via native save dialog (`src/lib/export.ts`,
+  `src/db/backup.ts`, `src/platform/exportFile.ts`); danger-zone wipe with
+  typed confirmation.
+- [ ] **Deferred (skipped by user decision):** PDF ingestion via LLM
+  extraction into the same review pipeline (needs a per-file consent dialog
+  — the statement content itself goes to the API, unlike AI assist);
+  cash-flow forecast; Sankey money-flow view.
