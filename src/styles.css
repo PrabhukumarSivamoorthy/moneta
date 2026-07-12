@@ -1,0 +1,85 @@
+/* Fonts are bundled locally (no runtime Google Fonts requests — privacy stance). */
+@import "@fontsource/ibm-plex-serif/400.css";
+@import "@fontsource/ibm-plex-serif/400-italic.css";
+@import "@fontsource/ibm-plex-serif/500.css";
+@import "@fontsource/ibm-plex-serif/500-italic.css";
+@import "@fontsource/ibm-plex-serif/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/courier-prime/400.css";
+@import "@fontsource/courier-prime/700.css";
+
+@import "tailwindcss";
+
+/* Design tokens from design-reference/Moneta Ledger.dc.html */
+@theme {
+  --color-paper: #f5efe0; /* main background (design default paperColor) */
+  --color-paper-side: #f7f2e7; /* sidebar background */
+  --color-ink: #1f261e; /* primary text */
+  --color-ink-soft: #4a5147;
+  --color-ink-mute: #65705f;
+  --color-ink-faint: #8b9384;
+  --color-accent: #2f5d45; /* ledger green */
+  --color-danger: #b3362c;
+  --color-rule: rgb(31 38 30 / 0.22); /* hairline borders */
+  --color-rule-soft: rgb(31 38 30 / 0.16);
+
+  --font-serif: "IBM Plex Serif", Georgia, serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-courier: "Courier Prime", monospace;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Paper-grain noise overlay, straight from the design reference. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.18 0 0 0 0 0.12 0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--color-ink);
+}
+
+input:focus,
+select:focus,
+button:focus {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(31 38 30 / 0.22);
+  border-radius: 6px;
+  border: 3px solid var(--color-paper);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
