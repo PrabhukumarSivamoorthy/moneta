@@ -23,6 +23,14 @@ relative to today so the suite never rots. SQL writes, exported files, and
 AI request bodies are captured on `window.__executed` / `__written` /
 `__aiCalls` for assertions (including the privacy guarantees).
 
+Playwright is the committed E2E engine (deterministic, CI-enforced,
+parallel); interactive browser tools (Chrome DevTools MCP) are for
+exploratory checks only and never replace a committed spec. On failure,
+traces + screenshots land in `test-results/` (`npx playwright show-trace
+<trace.zip>`); CI uploads them as the `e2e-failure-artifacts` artifact.
+`npm run test:e2e:ui` opens the interactive runner; `test:e2e:debug` steps
+through a spec.
+
 First `tauri dev`/`build` compiles the Rust crate and takes several minutes;
 subsequent runs are incremental.
 
