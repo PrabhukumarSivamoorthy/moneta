@@ -113,10 +113,16 @@
     { category_id: 5, month: CUR_MONTH, amount_cents: 9000 },
   ];
 
+  // Ordered by priority (as listRules returns them). Patterns deliberately
+  // avoid CSV-fixture merchants and uncategorized entries so import and
+  // apply-rules counts are unchanged; they exist to exercise the Settings
+  // rules filter + column sorting.
   const RULES = [
+    { id: 3, matcher: "uniqlo", match_type: "regex", category_id: 4, priority: 5, created_from: "manual" },
     { id: 1, matcher: "whole foods", match_type: "contains", category_id: 2, priority: 10, created_from: "correction" },
     // Matches the uncategorized Netflix row so apply-rules has work to do.
     { id: 2, matcher: "netflix", match_type: "contains", category_id: 5, priority: 20, created_from: "manual" },
+    { id: 4, matcher: "trader", match_type: "prefix", category_id: 2, priority: 30, created_from: "manual" },
   ];
 
   const SETTINGS = [

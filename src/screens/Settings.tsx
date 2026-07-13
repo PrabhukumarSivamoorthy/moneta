@@ -38,6 +38,11 @@ export default function Settings() {
   const [ruleMatcher, setRuleMatcher] = useState("");
   const [ruleType, setRuleType] = useState<MatchType>("contains");
   const [ruleCat, setRuleCat] = useState<number | "">("");
+  /** Rules table: filter by the category a rule sets, and sort by any
+   * column (ascending by default; click again to reverse). */
+  const [ruleCatFilter, setRuleCatFilter] = useState<number | "all">("all");
+  const [ruleSortKey, setRuleSortKey] = useState<"priority" | "match" | "pattern" | "category">("priority");
+  const [ruleSortAsc, setRuleSortAsc] = useState(true);
 
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [wipeConfirm, setWipeConfirm] = useState(false);
@@ -93,6 +98,53 @@ export default function Settings() {
   };
 
   const catName = (id: number) => categories.find((c) => c.id === id)?.name ?? `#${id}`;
+
+  /** listRules() returns rules in evaluation order (priority, id); this maps
+   * each rule to its 1-based rank so the "#" stays meaningful even when the
+   * table is re-sorted for viewing. */
+  const ruleRank = new Map(rules.map((r, i) => [r.id, i + 1]));
+
+  const visibleRules = rules
+    .filter((r) => ruleCatFilter === "all" || r.categoryId === ruleCatFilter)
+    .sort((a, b) => {
+      let cmp: number;
+      switch (ruleSortKey) {
+        case "priority":
+          cmp = (ruleRank.get(a.id) ?? 0) - (ruleRank.get(b.id) ?? 0);
+          break;
+        case "match":
+          cmp = a.matchType.localeCompare(b.matchType) || a.matcher.localeCompare(b.matcher);
+          break;
+        case "pattern":
+          cmp = a.matcher.localeCompare(b.matcher);
+          break;
+        case "category":
+          cmp = catName(a.categoryId).localeCompare(catName(b.categoryId)) || a.matcher.localeCompare(b.matcher);
+          break;
+      }
+      return ruleSortAsc ? cmp : -cmp;
+    });
+
+  /** Category ids that actually have a rule, for the filter dropdown. */
+  const ruleCategoryIds = [...new Set(rules.map((r) => r.categoryId))];
+
+  const ruleHeader = (key: typeof ruleSortKey, labelText: string, extra = "") => (
+    <span
+      data-testid={`rule-sort-${key}`}
+      onClick={() => {
+        if (ruleSortKey === key) setRuleSortAsc((v) => !v);
+        else {
+          setRuleSortKey(key);
+          setRuleSortAsc(true);
+        }
+      }}
+      className={`cursor-pointer select-none hover:text-ink ${extra}`}
+      title="Sort by this column"
+    >
+      {labelText}
+      {ruleSortKey === key && <span className="ml-1">{ruleSortAsc ? "▲" : "▼"}</span>}
+    </span>
+  );
 
   return (
     <div className="max-w-[820px]">
@@ -251,6 +303,28 @@ export default function Settings() {
         </button>
       </div>
       <div className={note}>Rules run top-down at import; the first match wins.</div>
+      {rules.length > 0 && (
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="text-[11.5px] italic text-ink-mute">Filter by category</span>
+          <select
+            className={selectCls}
+            value={ruleCatFilter}
+            onChange={(e) => setRuleCatFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+          >
+            <option value="all">All categories</option>
+            {ruleCategoryIds.map((cid) => (
+              <option key={cid} value={cid}>
+                {catName(cid)}
+              </option>
+            ))}
+          </select>
+          {ruleCatFilter !== "all" && (
+            <span className="font-mono text-[11px] text-ink-faint">
+              {visibleRules.length} of {rules.length}
+            </span>
+          )}
+        </div>
+      )}
       {addingRule && (
         <div className="mb-3 flex flex-wrap items-end gap-3 border-[1.5px] border-dashed border-accent/50 bg-accent/[0.04] px-4 py-3">
           <select className={selectCls} value={ruleType} onChange={(e) => setRuleType(e.target.value as MatchType)}>
@@ -311,18 +385,18 @@ export default function Settings() {
         </div>
       )}
       <div className="mb-8">
-        <div className="grid grid-cols-[36px_90px_1fr_150px_60px] gap-3 border-b border-ink py-1.5 font-courier text-[10px] tracking-[0.14em] text-ink-mute">
-          <span>#</span>
-          <span>MATCH</span>
-          <span>PATTERN</span>
-          <span>SET CATEGORY</span>
+        <div className="grid grid-cols-[44px_90px_1fr_150px_60px] gap-3 border-b border-ink py-1.5 font-courier text-[10px] tracking-[0.14em] text-ink-mute">
+          {ruleHeader("priority", "#")}
+          {ruleHeader("match", "MATCH")}
+          {ruleHeader("pattern", "PATTERN")}
+          {ruleHeader("category", "SET CATEGORY")}
           <span />
         </div>
-        {rules.map((r, i) => (
-          <div key={r.id} className="grid grid-cols-[36px_90px_1fr_150px_60px] items-center gap-3 border-b border-[rgba(74,108,88,0.28)] py-[7px] hover:bg-ink/[0.035]">
-            <span className="font-mono text-[11px] text-ink-faint">{i + 1}</span>
+        {visibleRules.map((r) => (
+          <div key={r.id} data-testid="rule-row" className="grid grid-cols-[44px_90px_1fr_150px_60px] items-center gap-3 border-b border-[rgba(74,108,88,0.28)] py-[7px] hover:bg-ink/[0.035]">
+            <span data-testid="rule-rank" className="font-mono text-[11px] text-ink-faint">{ruleRank.get(r.id)}</span>
             <span className="font-courier text-[10px] tracking-[0.06em] text-ink-mute">{r.matchType.toUpperCase()}</span>
-            <span className="w-fit border border-ink/10 bg-ink/5 px-2 py-0.5 font-mono text-[11.5px]">{r.matcher}</span>
+            <span data-testid="rule-pattern" className="w-fit border border-ink/10 bg-ink/5 px-2 py-0.5 font-mono text-[11.5px]">{r.matcher}</span>
             <span className="text-[12.5px] text-ink-mute">{catName(r.categoryId)}</span>
             <span
               className="cursor-pointer text-right font-courier text-[11px] text-ink-mute underline hover:text-danger"
@@ -343,6 +417,9 @@ export default function Settings() {
           <div className="py-2 text-[12px] italic text-ink-faint">
             No rules yet — they're created here or when you recategorize a transaction.
           </div>
+        )}
+        {rules.length > 0 && visibleRules.length === 0 && (
+          <div className="py-2 text-[12px] italic text-ink-faint">No rules set that category.</div>
         )}
       </div>
 
