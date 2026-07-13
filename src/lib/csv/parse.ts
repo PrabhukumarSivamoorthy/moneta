@@ -174,6 +174,10 @@ export function parseStatement(
     const rawLine = cells.join(spec.delimiter);
     const fail = (reason: string) => errors.push({ line, reason, raw: rawLine });
 
+    // Ignore rows with no content at all (blank lines, or spacer/trailer
+    // rows that are just delimiters like ",,,,") — silently, not as errors.
+    if (cells.every((c) => c.trim() === "")) continue;
+
     const dateStr = cells[dateIdx] ?? "";
     const date = parseDate(dateStr, spec.dateFormat);
     if (!date) {

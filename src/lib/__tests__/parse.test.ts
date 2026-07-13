@@ -103,6 +103,20 @@ describe("parseStatement — single amount column", () => {
     expect(errors[2].reason).toContain("Unparseable amount");
   });
 
+  it("silently ignores empty and delimiter-only rows (no error, not added)", () => {
+    const text = [
+      "Transaction Date,Description,Amount",
+      "07/11/2026,SHOP,-5.00",
+      ",,", // delimiter-only spacer row
+      "   ,  ,   ", // whitespace-only row
+      "",
+      "07/12/2026,GOOD,-1.00",
+    ].join("\n");
+    const { rows, errors } = parseStatement(text, CHASE);
+    expect(rows.map((r) => r.merchantRaw)).toEqual(["SHOP", "GOOD"]);
+    expect(errors).toEqual([]);
+  });
+
   it("errors on missing mapped columns", () => {
     const { rows, errors } = parseStatement("Date,Memo,Value\n1,2,3", CHASE);
     expect(rows).toEqual([]);
