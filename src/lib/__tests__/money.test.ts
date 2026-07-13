@@ -35,6 +35,20 @@ describe("formatCents", () => {
     expect(formatCents(-8427)).toBe("-$84.27");
     expect(formatCents(0)).toBe("$0.00");
   });
+
+  it("renders the configured display currency", async () => {
+    const { setDisplayCurrency } = await import("../money");
+    try {
+      setDisplayCurrency("EUR");
+      expect(formatCents(123456)).toBe("€1,234.56");
+      setDisplayCurrency("GBP");
+      expect(formatCents(-8427)).toBe("-£84.27");
+      // An explicit argument still wins over the module setting.
+      expect(formatCents(100, "USD")).toBe("$1.00");
+    } finally {
+      setDisplayCurrency("USD");
+    }
+  });
 });
 
 describe("round trip", () => {

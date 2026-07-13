@@ -27,8 +27,21 @@ if (import.meta.env.DEV && import.meta.env.VITE_E2E) {
     .catch((e) => console.error("[e2e-import] failed:", e));
 }
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+async function start() {
+  // The display currency must be known before the first amounts render.
+  try {
+    const { getAllSettings } = await import("./db/repo/settings");
+    const { setDisplayCurrency } = await import("./lib/money");
+    const settings = await getAllSettings();
+    if (settings.currency) setDisplayCurrency(settings.currency);
+  } catch {
+    // Browser dev / E2E without a settings table: USD default stands.
+  }
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
+}
+
+void start();

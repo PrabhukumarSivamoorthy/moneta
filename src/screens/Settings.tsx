@@ -3,7 +3,7 @@ import { TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { TIER_FILL } from "../components/charts";
 import type { MatchType } from "../lib/rules";
 import { accountStats, setAccountBalance, type AccountStats } from "../db/repo/accounts";
-import { centsToDecimalString, parseAmountToCents } from "../lib/money";
+import { centsToDecimalString, parseAmountToCents, setDisplayCurrency } from "../lib/money";
 import { listCategories, updateCategory, type Category } from "../db/repo/categories";
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
@@ -333,7 +333,14 @@ export default function Settings() {
       <div className="mb-8 grid grid-cols-2 gap-11">
         <div className="grid grid-cols-[100px_1fr] items-center gap-2.5">
           <span className="text-[12px] italic text-ink-mute">Currency</span>
-          <select className={selectCls} value={settings.currency ?? "USD"} onChange={(e) => void saveSetting("currency", e.target.value)}>
+          <select
+            className={selectCls}
+            value={settings.currency ?? "USD"}
+            onChange={(e) => {
+              setDisplayCurrency(e.target.value); // takes effect immediately
+              void saveSetting("currency", e.target.value);
+            }}
+          >
             <option value="USD">USD — $</option>
             <option value="EUR">EUR — €</option>
             <option value="GBP">GBP — £</option>

@@ -20,8 +20,17 @@ export function parseAmountToCents(input: string): number | null {
   return sign === "-" ? -cents : cents;
 }
 
+/** The currency every formatCents call renders in. Set once at app start
+ * from the settings table and again when the user changes the setting —
+ * so the option actually changes what the screens show. */
+let displayCurrency = "USD";
+
+export function setDisplayCurrency(code: string): void {
+  displayCurrency = code;
+}
+
 /** Format integer cents as a currency string, e.g. 123456 → "$1,234.56". */
-export function formatCents(cents: number, currency = "USD"): string {
+export function formatCents(cents: number, currency = displayCurrency): string {
   const negative = cents < 0;
   const abs = Math.abs(cents);
   const whole = Math.floor(abs / 100);
