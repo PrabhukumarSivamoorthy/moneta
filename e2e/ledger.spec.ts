@@ -7,18 +7,18 @@ import { test, expect, nav, executed, aiCalls } from "./support/helpers";
 test("Transactions: ledger renders known rows with amounts", async ({ page }) => {
   await nav(page, "Transactions");
 
-  const sushi = page.locator("tr", { hasText: "Sushi Kashiba" });
+  const sushi = page.getByTestId("tx-row").filter({ hasText: "Sushi Kashiba" });
   await expect(sushi).toBeVisible();
   await expect(sushi).toContainText("-$386.42"); // formatCents(-38642)
 
-  const camber = page.locator("tr", { hasText: "Camber Prop Mgmt" });
+  const camber = page.getByTestId("tx-row").filter({ hasText: "Camber Prop Mgmt" });
   await expect(camber).toBeVisible();
   await expect(camber).toContainText("-$1,800.00"); // formatCents(-180000)
 });
 
 test("Transactions: Luxury tier filter narrows to luxury rows", async ({ page }) => {
   await nav(page, "Transactions");
-  await expect(page.locator("tr", { hasText: "Whole Foods" })).toBeVisible();
+  await expect(page.getByTestId("tx-row").filter({ hasText: "Whole Foods" })).toBeVisible();
 
   // The tier filter is the only select carrying the "untiered" option.
   const tierSelect = page.locator("select").filter({ has: page.locator('option[value="untiered"]') });
@@ -26,15 +26,15 @@ test("Transactions: Luxury tier filter narrows to luxury rows", async ({ page })
 
   // Uniqlo (Shopping default luxury) and Zelle Maya Lunch (Dining with a
   // luxury tier_override) survive; the need-tier Whole Foods row is gone.
-  await expect(page.locator("tr", { hasText: "Uniqlo" })).toBeVisible();
-  await expect(page.locator("tr", { hasText: "Zelle Maya Lunch" })).toBeVisible();
-  await expect(page.locator("tr", { hasText: "Whole Foods" })).toHaveCount(0);
+  await expect(page.getByTestId("tx-row").filter({ hasText: "Uniqlo" })).toBeVisible();
+  await expect(page.getByTestId("tx-row").filter({ hasText: "Zelle Maya Lunch" })).toBeVisible();
+  await expect(page.getByTestId("tx-row").filter({ hasText: "Whole Foods" })).toHaveCount(0);
 });
 
 test("Transactions: inline recategorize offers a rule and writes it", async ({ page }) => {
   await nav(page, "Transactions");
 
-  const netflixRow = page.locator("tr", { hasText: "Netflix.com" });
+  const netflixRow = page.getByTestId("tx-row").filter({ hasText: "Netflix.com" });
   await netflixRow.locator("select").selectOption({ label: "Subscriptions" });
 
   // Correction banner appears; persisting it issues an INSERT INTO rules.

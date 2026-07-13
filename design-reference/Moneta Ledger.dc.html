@@ -573,6 +573,7 @@ input:focus,select:focus,button:focus{outline:1px solid #2F5D45;outline-offset:1
       <!-- ======== TRANSACTIONS ======== -->
       <sc-if value="{{ isTransactions }}" hint-placeholder-val="{{ false }}">
         <div data-screen-label="Transactions">
+          <div style="position:sticky;top:0;z-index:20;background:{{ paperBg }};padding-top:2px">
           <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:18px">
             <div style="font-size:20px;font-weight:600">Transactions</div>
             <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#65705F">{{ txnCount }} entries in period</div>
@@ -652,6 +653,10 @@ input:focus,select:focus,button:focus{outline:1px solid #2F5D45;outline-offset:1
               <span onClick="{{ sortByTier }}" style="cursor:pointer" style-hover="color:#1F261E">TIER <span style="color:#8B9384">{{ tierSortMark }}</span></span>
               <span onClick="{{ sortByAmount }}" style="cursor:pointer;text-align:right" style-hover="color:#1F261E">AMOUNT <span style="color:#8B9384">{{ amtSortMark }}</span></span>
             </div>
+          </div>
+          </div>
+
+          <div>
             <sc-for list="{{ filteredTxns }}" as="t" hint-placeholder-count="12">
               <div style="display:grid;grid-template-columns:34px 96px 1fr 128px 150px 58px 108px;gap:10px;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(74,108,88,0.28);background:{{ t.rowBg }}" style-hover="background:rgba(31,38,30,0.04)">
                 <input type="checkbox" checked="{{ t.checked }}" onChange="{{ t.onSel }}" style="accent-color:#2F5D45;cursor:pointer;width:13px;height:13px;margin:0">
@@ -683,10 +688,11 @@ input:focus,select:focus,button:focus{outline:1px solid #2F5D45;outline-offset:1
       <!-- ======== UPLOAD ======== -->
       <sc-if value="{{ isUpload }}" hint-placeholder-val="{{ false }}">
         <div data-screen-label="Upload and review">
+          <div style="position:sticky;top:0;z-index:20;background:{{ paperBg }};padding-top:2px">
           <div style="font-size:20px;font-weight:600;margin-bottom:4px">Upload &amp; review</div>
           <div style="font-size:12.5px;color:#65705F;font-style:italic;margin-bottom:22px">Nothing enters the ledger until you confirm in step 3.</div>
 
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:28px">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:0;padding-bottom:16px;border-bottom:1px solid rgba(31,38,30,0.18)">
             <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
               <div style="display:flex;align-items:center;gap:14px">
                 <div style="display:flex;align-items:center;gap:8px;padding-bottom:4px;border-bottom:2px solid {{ s.underline }}">
@@ -697,6 +703,8 @@ input:focus,select:focus,button:focus{outline:1px solid #2F5D45;outline-offset:1
               </div>
             </sc-for>
           </div>
+          </div>
+          <div style="height:24px"></div>
 
           <!-- STEP A -->
           <sc-if value="{{ isStepA }}" hint-placeholder-val="{{ true }}">

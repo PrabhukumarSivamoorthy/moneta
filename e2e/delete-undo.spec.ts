@@ -6,7 +6,7 @@ import { test, expect, nav, executed } from "./support/helpers";
 
 test("per-row delete arms first, then deletes exactly that row", async ({ page }) => {
   await nav(page, "Transactions");
-  const row = page.locator("tr", { hasText: "Sushi Kashiba" });
+  const row = page.getByTestId("tx-row").filter({ hasText: "Sushi Kashiba" });
   await expect(row).toBeVisible();
 
   await row.locator('span[title="Delete this entry"]').click();
@@ -20,7 +20,7 @@ test("per-row delete arms first, then deletes exactly that row", async ({ page }
 
 test("arming a delete and clicking no cancels it", async ({ page }) => {
   await nav(page, "Transactions");
-  const row = page.locator("tr", { hasText: "Sushi Kashiba" });
+  const row = page.getByTestId("tx-row").filter({ hasText: "Sushi Kashiba" });
   await row.locator('span[title="Delete this entry"]').click();
   await row.getByText("no", { exact: true }).click();
   await expect(row.locator('span[title="Delete this entry"]')).toBeVisible();
@@ -29,8 +29,8 @@ test("arming a delete and clicking no cancels it", async ({ page }) => {
 
 test("bulk delete requires the armed confirmation", async ({ page }) => {
   await nav(page, "Transactions");
-  await page.locator("tr", { hasText: "Sushi Kashiba" }).locator('input[type="checkbox"]').check();
-  await page.locator("tr", { hasText: "Uniqlo" }).locator('input[type="checkbox"]').check();
+  await page.getByTestId("tx-row").filter({ hasText: "Sushi Kashiba" }).locator('input[type="checkbox"]').check();
+  await page.getByTestId("tx-row").filter({ hasText: "Uniqlo" }).locator('input[type="checkbox"]').check();
 
   await page.getByRole("button", { name: "Delete 2…" }).click();
   expect((await executed(page)).some((q) => q.startsWith("DELETE FROM transactions"))).toBe(false);

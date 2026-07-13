@@ -83,7 +83,7 @@ function StepIndicator({ step }: { step: Step }) {
     { id: "c", num: "03", label: "CONFIRM" },
   ];
   return (
-    <div className="mb-7 flex items-center gap-3.5">
+    <div className="flex items-center gap-3.5 pb-4">
       {steps.map((s, i) => {
         const active = s.id === step;
         return (
@@ -446,18 +446,22 @@ export default function Upload() {
 
   return (
     <div>
-      <div className="mb-1 text-[20px] font-semibold">Upload &amp; review</div>
-      <div className="mb-5 text-[12.5px] italic text-ink-mute">
-        Nothing enters the ledger until you confirm in step 3.
-      </div>
-
-      {dbError && (
-        <div className="mb-5 border border-danger/50 bg-danger/5 px-4 py-3 text-[13px] text-danger">
-          Database error: {dbError}
+      {/* Frozen while the review list scrolls (design: sticky header block). */}
+      <div className="sticky top-0 z-20 border-b border-[rgba(31,38,30,0.18)] bg-paper pt-0.5">
+        <div className="mb-1 text-[20px] font-semibold">Upload &amp; review</div>
+        <div className="mb-5 text-[12.5px] italic text-ink-mute">
+          Nothing enters the ledger until you confirm in step 3.
         </div>
-      )}
 
-      <StepIndicator step={step} />
+        {dbError && (
+          <div className="mb-5 border border-danger/50 bg-danger/5 px-4 py-3 text-[13px] text-danger">
+            Database error: {dbError}
+          </div>
+        )}
+
+        <StepIndicator step={step} />
+      </div>
+      <div className="h-6" />
 
       {step === "a" && (
         <>

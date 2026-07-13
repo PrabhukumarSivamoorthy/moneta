@@ -24,6 +24,12 @@ type TierFilter = "all" | Tier | "untiered";
 const selectCls =
   "bg-transparent border-0 border-b border-ink/40 px-0.5 py-[6px] text-[12.5px] text-ink cursor-pointer font-serif focus:border-accent";
 
+/** One grid template shared by the frozen column-header row and every
+ * ledger row, so the columns stay aligned (design renders rows as grids —
+ * that is what lets the whole header block be position:sticky). */
+const ROW_GRID =
+  "grid grid-cols-[34px_96px_1fr_150px_200px_140px_110px_44px] items-center gap-2.5";
+
 /** Offer shown after a manual recategorization: persist it as a rule. */
 interface RuleOffer {
   merchantNormalized: string;
@@ -214,7 +220,7 @@ export default function Transactions() {
   };
 
   const sortHeader = (key: SortKey, label: string, extra = "") => (
-    <th
+    <span
       onClick={() => {
         if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
         else {
@@ -222,15 +228,18 @@ export default function Transactions() {
           setSortDir(key === "merchant" ? "asc" : "desc");
         }
       }}
-      className={`cursor-pointer select-none py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute hover:text-ink ${extra}`}
+      className={`cursor-pointer select-none font-courier text-[10px] tracking-[0.2em] text-ink-mute hover:text-ink ${extra}`}
     >
       {label}
       {sortKey === key && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
-    </th>
+    </span>
   );
 
   return (
     <div>
+      {/* Frozen while ledger rows scroll (design: sticky header block from
+          title through the column-header row). */}
+      <div className="sticky top-0 z-20 bg-paper pt-0.5">
       <div className="mb-1 flex items-baseline gap-4">
         <div className="text-[20px] font-semibold">Transactions</div>
         {uncategorizedCount > 0 && (
@@ -458,63 +467,65 @@ export default function Transactions() {
         </div>
       )}
 
-      {/* Ledger table */}
+      {/* Column headers — frozen together with the block above */}
+      {visible !== null && visible.length > 0 && (
+        <div className={`${ROW_GRID} border-b border-rule px-1 py-2`}>
+          <span>
+            <input
+              type="checkbox"
+              className="accent-[#2F5D45]"
+              checked={visible.length > 0 && visible.every((r) => selected.has(r.id))}
+              onChange={(e) =>
+                setSelected(e.target.checked ? new Set(visible.map((r) => r.id)) : new Set())
+              }
+            />
+          </span>
+          {sortHeader("date", "DATE")}
+          {sortHeader("merchant", "MERCHANT")}
+          <span className="font-courier text-[10px] tracking-[0.2em] text-ink-mute">ACCOUNT</span>
+          <span className="font-courier text-[10px] tracking-[0.2em] text-ink-mute">CATEGORY</span>
+          <span className="font-courier text-[10px] tracking-[0.2em] text-ink-mute">TIER</span>
+          {sortHeader("amount", "AMOUNT", "text-right")}
+          <span />
+        </div>
+      )}
+      </div>
+
+      {/* Ledger rows — scroll beneath the frozen block */}
       {visible === null ? (
-        <div className="text-[13px] italic text-ink-mute">Loading…</div>
+        <div className="pt-3 text-[13px] italic text-ink-mute">Loading…</div>
       ) : visible.length === 0 ? (
-        <div className="border border-dashed border-rule px-6 py-10 text-center text-[13px] italic text-ink-mute">
+        <div className="mt-3 border border-dashed border-rule px-6 py-10 text-center text-[13px] italic text-ink-mute">
           No transactions in this period{search || accountFilter !== "all" || categoryFilter !== "all" || tierFilter !== "all" ? " matching the filters" : ""}.
         </div>
       ) : (
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-rule">
-              <th className="w-8 py-2">
-                <input
-                  type="checkbox"
-                  className="accent-[#2F5D45]"
-                  checked={visible.length > 0 && visible.every((r) => selected.has(r.id))}
-                  onChange={(e) =>
-                    setSelected(e.target.checked ? new Set(visible.map((r) => r.id)) : new Set())
-                  }
-                />
-              </th>
-              {sortHeader("date", "DATE")}
-              {sortHeader("merchant", "MERCHANT")}
-              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">ACCOUNT</th>
-              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">CATEGORY</th>
-              <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">TIER</th>
-              {sortHeader("amount", "AMOUNT", "text-right")}
-              <th className="w-16 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => {
-              const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
-              return (
-                <tr key={r.id} className="border-b border-rule-soft hover:bg-ink/[0.025]">
-                  <td className="py-2">
-                    <input
-                      type="checkbox"
-                      className="accent-[#2F5D45]"
-                      checked={selected.has(r.id)}
-                      onChange={(e) =>
-                        setSelected((s) => {
-                          const next = new Set(s);
-                          if (e.target.checked) next.add(r.id);
-                          else next.delete(r.id);
-                          return next;
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="py-2 pr-4 font-mono text-[12px]">{r.date}</td>
-                  <td className="py-2 pr-4">
-                    <div className="text-[13px]">{r.merchantNormalized}</div>
-                    <div className="font-mono text-[10px] text-ink-faint">{r.merchantRaw}</div>
-                  </td>
-                  <td className="py-2 pr-4 text-[12px] text-ink-soft">{r.accountName}</td>
-                  <td className="py-2 pr-4">
+        <div>
+          {visible.map((r) => {
+            const tier = effectiveTier(r.tierOverride, r.categoryDefaultTier);
+            return (
+              <div key={r.id} data-testid="tx-row" className={`${ROW_GRID} border-b border-rule-soft px-1 py-1.5 hover:bg-ink/[0.025]`}>
+                <span>
+                  <input
+                    type="checkbox"
+                    className="accent-[#2F5D45]"
+                    checked={selected.has(r.id)}
+                    onChange={(e) =>
+                      setSelected((s) => {
+                        const next = new Set(s);
+                        if (e.target.checked) next.add(r.id);
+                        else next.delete(r.id);
+                        return next;
+                      })
+                    }
+                  />
+                </span>
+                <span className="font-mono text-[12px]">{r.date}</span>
+                <span>
+                  <div className="text-[13px]">{r.merchantNormalized}</div>
+                  <div className="font-mono text-[10px] text-ink-faint">{r.merchantRaw}</div>
+                </span>
+                <span className="text-[12px] text-ink-soft">{r.accountName}</span>
+                <span>
                     <select
                       className={`${selectCls} ${r.categoryId === null ? "border-accent/60 italic text-accent" : ""}`}
                       value={r.categoryId ?? ""}
@@ -578,8 +589,8 @@ export default function Transactions() {
                         </span>
                       </span>
                     )}
-                  </td>
-                  <td className="py-2 pr-4">
+                  </span>
+                  <span>
                     {r.categoryId === null || r.categoryIsSystem ? (
                       <span className="font-courier text-[10px] text-ink-faint" title={r.categoryIsSystem ? "System categories carry no tier" : undefined}>
                         —
@@ -606,11 +617,11 @@ export default function Transactions() {
                         ))}
                       </select>
                     )}
-                  </td>
-                  <td className={`py-2 text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
+                  </span>
+                  <span className={`text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
                     {formatCents(r.amountCents)}
-                  </td>
-                  <td className="py-2 pl-3 text-right">
+                  </span>
+                  <span className="text-right">
                     {armedDelete === r.id ? (
                       <span className="whitespace-nowrap font-courier text-[10px]">
                         <span
@@ -641,12 +652,11 @@ export default function Transactions() {
                         ×
                       </span>
                     )}
-                  </td>
-                </tr>
+                  </span>
+                </div>
               );
             })}
-          </tbody>
-        </table>
+        </div>
       )}
     </div>
   );
