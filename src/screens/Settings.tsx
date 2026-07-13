@@ -3,7 +3,8 @@ import { TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { TIER_FILL } from "../components/charts";
 import { applyRules, type MatchType } from "../lib/rules";
 import { accountStats, setAccountBalance, type AccountStats } from "../db/repo/accounts";
-import { centsToDecimalString, parseAmountToCents, setDisplayCurrency } from "../lib/money";
+import { derivedCash } from "../lib/cash";
+import { centsToDecimalString, formatCents, parseAmountToCents, setDisplayCurrency } from "../lib/money";
 import { listCategories, updateCategory, type Category } from "../db/repo/categories";
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
@@ -12,7 +13,7 @@ import { getApiKey, setApiKey } from "../platform/apiKey";
 import { gatherBackupData, restoreBackup, wipeAllData } from "../db/backup";
 import { buildBackup, buildTransactionsCsv, parseBackup, type ParsedBackup } from "../lib/export";
 import { decryptText, encryptText, isEncryptedEnvelope } from "../lib/crypto";
-import { queryTransactions, setTransactionsCategory } from "../db/repo/transactions";
+import { queryTransactions, setTransactionsCategory, type TxRow } from "../db/repo/transactions";
 import { exportTextFile, importTextFile } from "../platform/exportFile";
 
 const section =
@@ -23,8 +24,20 @@ const selectCls =
 const ghostBtn =
   "cursor-pointer border border-accent/50 bg-transparent px-3 py-1.5 font-courier text-[11px] text-accent hover:bg-accent/[0.08]";
 
+/** Account types whose balance is reconciled against transactions. */
+const LIQUID_TYPES = new Set(["checking", "savings"]);
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function Settings() {
   const [accounts, setAccounts] = useState<AccountStats[]>([]);
+  /** Full ledger, for the expected-balance (reconciliation) line. */
+  const [txAll, setTxAll] = useState<TxRow[]>([]);
+  /** Per-account reconciliation result after saving a balance. */
+  const [reconcileNotes, setReconcileNotes] = useState<Record<number, string>>({});
   const [uploads, setUploads] = useState<UploadStats[]>([]);
   const [armedUndo, setArmedUndo] = useState<number | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -61,14 +74,17 @@ export default function Settings() {
 
   const load = useCallback(async () => {
     try {
-      const [accts, ups, cats, rls, stgs] = await Promise.all([
+      const [accts, ups, cats, rls, stgs, txs] = await Promise.all([
         accountStats(),
         listUploads(),
         listCategories(),
         listRules(),
         getAllSettings(),
+        // Everything up to today: future-dated entries don't count as cash yet.
+        queryTransactions({ start: "0000-01-01", end: todayIso() }),
       ]);
       setAccounts(accts);
+      setTxAll(txs);
       setUploads(ups);
       setCategories(cats);
       setRules(rls);
@@ -159,55 +175,89 @@ export default function Settings() {
       {/* Accounts */}
       <div className={section}>ACCOUNTS</div>
       <div className="mb-2">
-        {accounts.map((a) => (
-          <div key={a.id} className="flex items-center gap-3.5 border-b border-[rgba(74,108,88,0.28)] py-2">
-            <div className="flex-1">
-              <div className="text-[13.5px] font-medium">{a.name}</div>
-              <div className="mt-0.5 text-[11px] italic text-ink-faint">
-                {a.type} · <span className="font-mono not-italic">{a.lastDate ?? "no entries"}</span> ·{" "}
-                {a.entryCount} entries
-                {a.balanceAsOf && (
-                  <>
-                    {" "}
-                    · balance as of <span className="font-mono not-italic">{a.balanceAsOf}</span>
-                  </>
+        {accounts.map((a) => {
+          const liquid = LIQUID_TYPES.has(a.type);
+          const expected = liquid ? derivedCash(a, txAll) : null;
+          return (
+            <div key={a.id} className="flex items-center gap-3.5 border-b border-[rgba(74,108,88,0.28)] py-2">
+              <div className="flex-1">
+                <div className="text-[13.5px] font-medium">{a.name}</div>
+                <div className="mt-0.5 text-[11px] italic text-ink-faint">
+                  {a.type} · <span className="font-mono not-italic">{a.lastDate ?? "no entries"}</span> ·{" "}
+                  {a.entryCount} entries
+                  {a.balanceAsOf && (
+                    <>
+                      {" "}
+                      · balance as of <span className="font-mono not-italic">{a.balanceAsOf}</span>
+                    </>
+                  )}
+                </div>
+                {expected && (expected.anchored || expected.entriesCounted > 0) && (
+                  <div
+                    className="mt-0.5 text-[11px] italic text-ink-mute"
+                    title="Anchor balance plus every transaction after its as-of date — compare with your bank to reconcile"
+                  >
+                    expected from entries:{" "}
+                    <span data-testid={`expected-${a.id}`} className="font-mono not-italic text-ink">
+                      {formatCents(expected.cents)}
+                    </span>
+                  </div>
+                )}
+                {reconcileNotes[a.id] && (
+                  <div data-testid={`reconcile-note-${a.id}`} className="mt-0.5 text-[11px] italic">
+                    {reconcileNotes[a.id].startsWith("✓") ? (
+                      <span className="text-accent not-italic font-courier">{reconcileNotes[a.id]}</span>
+                    ) : (
+                      <span className="text-danger">{reconcileNotes[a.id]}</span>
+                    )}
+                  </div>
                 )}
               </div>
+              <div className="flex items-baseline gap-1" title="Statement balance, entered by hand — the anchor for the Overview screen">
+                <span className="font-mono text-[11px] text-ink-faint">$</span>
+                <input
+                  data-testid={`balance-input-${a.id}`}
+                  className="w-24 border-0 border-b border-ink/30 bg-transparent px-0.5 py-1 text-right font-mono text-[12px] text-ink focus:border-accent"
+                  defaultValue={a.balanceCents !== 0 ? centsToDecimalString(a.balanceCents) : ""}
+                  placeholder="0.00"
+                  onBlur={async (e) => {
+                    const cents = parseAmountToCents(e.target.value || "0");
+                    if (cents === null || cents === a.balanceCents) return;
+                    // Reconcile BEFORE re-anchoring: what did the old anchor +
+                    // transactions predict the balance to be right now?
+                    if (expected && (expected.anchored || expected.entriesCounted > 0)) {
+                      const diff = cents - expected.cents;
+                      setReconcileNotes((s) => ({
+                        ...s,
+                        [a.id]:
+                          diff === 0
+                            ? "✓ matches the transaction-expected balance"
+                            : `${formatCents(Math.abs(diff))} ${diff > 0 ? "more" : "less"} than the ${formatCents(expected.cents)} your transactions predict — a statement or entry may be missing.`,
+                      }));
+                    }
+                    try {
+                      await setAccountBalance(a.id, cents, todayIso());
+                      await load();
+                    } catch (err) {
+                      setError(String(err));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                />
+              </div>
             </div>
-            <div className="flex items-baseline gap-1" title="Statement balance, entered by hand — shown on the Overview screen">
-              <span className="font-mono text-[11px] text-ink-faint">$</span>
-              <input
-                className="w-24 border-0 border-b border-ink/30 bg-transparent px-0.5 py-1 text-right font-mono text-[12px] text-ink focus:border-accent"
-                defaultValue={a.balanceCents !== 0 ? centsToDecimalString(a.balanceCents) : ""}
-                placeholder="0.00"
-                onBlur={async (e) => {
-                  const cents = parseAmountToCents(e.target.value || "0");
-                  if (cents === null || cents === a.balanceCents) return;
-                  try {
-                    const d = new Date();
-                    await setAccountBalance(
-                      a.id,
-                      cents,
-                      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-                    );
-                    await load();
-                  } catch (err) {
-                    setError(String(err));
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
-              />
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {accounts.length === 0 && (
           <div className="py-2 text-[12px] italic text-ink-faint">No accounts yet — create one on the Upload screen.</div>
         )}
       </div>
       <div className="mb-8 text-[11px] italic text-ink-faint">
-        Balances feed the Overview screen; for credit cards enter the amount owed as a positive number.
+        Balances feed the Overview screen; for credit cards enter the amount owed as a positive number. For checking
+        and savings the balance is an <em>anchor</em>: Overview shows it plus every transaction recorded after its
+        date, so you only need to re-enter it to reconcile.
       </div>
 
       {/* Import history */}

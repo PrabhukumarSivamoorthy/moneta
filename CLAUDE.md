@@ -152,8 +152,12 @@ categories with tiers, and 50/30/20 tier targets.
 
 Migration 0002 additions:
 - `accounts.balance_cents` + `balance_as_of` — statement balances entered by
-  hand in Settings; the Overview screen reads them (brokerage = net
-  contributions, cards = amount owed as positive).
+  hand in Settings (brokerage = net contributions, cards = amount owed as
+  positive). For checking/savings the entry is an ANCHOR: Overview's liquid
+  cash = anchor + all transactions dated after `balance_as_of` (pure helper
+  `derivedCash` in `src/lib/cash.ts`; no anchor → sum of all the account's
+  entries). Settings shows the expected balance per liquid account and, on
+  saving a new balance, reports the mismatch vs what transactions predict.
 - `categories.is_system` — the seeded system categories (Income, Lent &
   borrowed, Investing transfer, Card payment) route non-spending money.
   **Every spend/tier aggregation excludes them** (see `isSpend` in

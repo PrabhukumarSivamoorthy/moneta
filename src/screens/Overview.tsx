@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatCents } from "../lib/money";
+import { derivedCash } from "../lib/cash";
 import { groupByPerson } from "../lib/lending";
 import { forecast } from "../lib/forecast";
 import { isSpend } from "../lib/budget";
@@ -51,11 +52,20 @@ export default function Overview() {
     void load();
   }, [load]);
 
-  const liquid = accounts.filter((a) => LIQUID_TYPES.has(a.type));
   const invested = accounts.filter((a) => INVESTED_TYPES.has(a.type));
   const cards = accounts.filter((a) => CARD_TYPES.has(a.type));
 
-  const liquidTotal = liquid.reduce((a, x) => a + x.balanceCents, 0);
+  /** Liquid balances are DERIVED: hand-entered anchor + transactions after
+   * the anchor date (see lib/cash.ts). Brokerage and cards stay hand-entered. */
+  const liquid = useMemo(
+    () =>
+      accounts
+        .filter((a) => LIQUID_TYPES.has(a.type))
+        .map((a) => ({ account: a, cash: derivedCash(a, allRows) })),
+    [accounts, allRows],
+  );
+
+  const liquidTotal = liquid.reduce((a, x) => a + x.cash.cents, 0);
   const investedTotal = invested.reduce((a, x) => a + x.balanceCents, 0);
   const cardsOwed = cards.reduce((a, x) => a + x.balanceCents, 0);
 
@@ -109,8 +119,9 @@ export default function Overview() {
         <div className="font-mono text-[11px] text-ink-faint">as of {todayIso()}</div>
       </div>
       <div className="mb-6 text-[12px] italic text-ink-mute">
-        Where everything stands. Balances are entered by hand in Settings → Accounts after each statement; brokerage
-        figures are net contributions, not market value.
+        Where everything stands. Liquid cash = the anchor balance you enter in Settings → Accounts plus every
+        transaction recorded after it; brokerage and card balances are entered by hand (brokerage figures are net
+        contributions, not market value).
       </div>
 
       {error && (
@@ -127,11 +138,22 @@ export default function Overview() {
 
       {/* Liquid cash */}
       <div className={section}>LIQUID CASH</div>
-      {liquid.map((a) => (
+      {liquid.map(({ account: a, cash }) => (
         <div key={a.id} className={row}>
           <span className="text-[13.5px]">{a.name}</span>
-          <span className="font-mono text-[11px] text-ink-faint">{balanceNote(a)}</span>
-          <span className="text-right font-mono text-[13px]">{formatCents(a.balanceCents)}</span>
+          <span className="font-mono text-[11px] text-ink-faint">
+            {cash.anchored
+              ? `anchor ${formatCents(a.balanceCents)} as of ${a.balanceAsOf}` +
+                (cash.entriesCounted > 0
+                  ? ` + ${cash.entriesCounted} entr${cash.entriesCounted === 1 ? "y" : "ies"}`
+                  : "")
+              : cash.entriesCounted > 0
+                ? `from ${cash.entriesCounted} entries · no anchor set`
+                : "not set"}
+          </span>
+          <span data-testid={`liquid-${a.id}`} className="text-right font-mono text-[13px]">
+            {formatCents(cash.cents)}
+          </span>
         </div>
       ))}
       {liquid.length === 0 && <div className="py-2 text-[12px] italic text-ink-faint">no checking or savings accounts yet</div>}
@@ -204,7 +226,7 @@ export default function Overview() {
       ))}
 
       <div className="mt-5 font-courier text-[10px] text-ink-faint">
-        Balances are entered manually — update them in Settings → Accounts after each statement.
+        Re-enter a statement balance in Settings → Accounts any time to reconcile — it becomes the new anchor.
       </div>
     </div>
   );

@@ -100,7 +100,10 @@
   ];
 
   const ACCOUNTS = [
-    { id: 1, name: "Chase Checking", type: "checking", balance_cents: 842000, balance_as_of: day(0, 10) },
+    // Anchored on day 7 so five current-month rows postdate it: Sushi −38642,
+    // Zelle to Sam −25000, Netflix −1549, Zelle Maya −1850, Zelle from Sam
+    // +10000 → derived liquid = 842000 − 57041 = 784959 ($7,849.59).
+    { id: 1, name: "Chase Checking", type: "checking", balance_cents: 842000, balance_as_of: day(0, 7) },
     { id: 2, name: "E*TRADE", type: "brokerage", balance_cents: 2450000, balance_as_of: day(0, 1) },
     { id: 3, name: "Amex Gold", type: "credit card", balance_cents: 128440, balance_as_of: day(0, 10) },
   ];

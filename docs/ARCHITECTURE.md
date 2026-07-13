@@ -104,8 +104,8 @@ erDiagram
         int id PK
         text name
         text type "checking | savings | brokerage | credit card"
-        int balance_cents "entered by hand in Settings"
-        text balance_as_of
+        int balance_cents "entered by hand in Settings (anchor for checking/savings)"
+        text balance_as_of "anchor date - liquid cash adds transactions after it"
     }
     bank_profiles {
         int id PK

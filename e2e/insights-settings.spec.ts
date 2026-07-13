@@ -10,18 +10,23 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  * Every expected number is derived from the deterministic stub dataset in
  * e2e/support/tauri-stub.js.
  *
- * Balances from the stub: Chase Checking (checking) $8,420.00, E*TRADE
- * (brokerage) $24,500.00, Amex Gold (credit card) $1,284.40.
+ * Balances from the stub: Chase Checking (checking) anchor $8,420.00 as of
+ * day 7 + 5 entries after it (−$570.41) → derived liquid $7,849.59; E*TRADE
+ * (brokerage) $24,500.00, Amex Gold (credit card) $1,284.40 stay hand-entered.
  * Lent & borrowed: Sam K −$250 sent / +$100 received → +$150 owed to you;
  * Dad +$500 received → −$500 you owe. Net lent = −$350.
- * Net position = 842000 + 2450000 + (−35000) − 128440 = 3128560 → $31,285.60.
+ * Net position = 784959 + 2450000 + (−35000) − 128440 = 3071519 → $30,715.19.
  */
 
-test("Overview: net position and 3-month forecast", async ({ page }) => {
+test("Overview: net position, derived liquid cash, and 3-month forecast", async ({ page }) => {
   await nav(page, "Overview");
 
   await expect(page.getByText("NET POSITION")).toBeVisible();
-  await expect(page.getByText("$31,285.60")).toBeVisible();
+  await expect(page.getByText("$30,715.19")).toBeVisible();
+
+  // Liquid cash is DERIVED: anchor + the 5 transactions after its as-of date.
+  await expect(page.getByTestId("liquid-1")).toHaveText("$7,849.59");
+  await expect(page.getByText(/anchor \$8,420\.00 as of .* \+ 5 entries/)).toBeVisible();
 
   // Forecast: header row + exactly 3 projection rows share this grid template.
   await expect(page.getByText("PROJECTED LIQUID")).toBeVisible();
@@ -119,6 +124,34 @@ test("Trends: money-flow Sankey, tier composition, category legend", async ({ pa
   // Sankey nodes are SVG <text> labels rendered by the FlowNode component.
   await expect(page.getByText("This period")).toBeVisible();
   await expect(page.getByText("Kept")).toBeVisible();
+});
+
+test("Settings: saving a balance reconciles against the transaction-expected amount", async ({ page }) => {
+  await nav(page, "Settings");
+
+  // Expected = anchor $8,420.00 + the 5 post-anchor entries = $7,849.59.
+  await expect(page.getByTestId("expected-1")).toHaveText("$7,849.59");
+
+  // Enter a balance $49.59 below what the transactions predict → mismatch.
+  const input = page.getByTestId("balance-input-1");
+  await input.fill("7800.00");
+  await input.blur();
+
+  await expect(page.getByTestId("reconcile-note-1")).toContainText(
+    "$49.59 less than the $7,849.59 your transactions predict",
+  );
+  await expect
+    .poll(async () => (await executed(page)).some((q) => q.startsWith("UPDATE accounts SET balance_cents")))
+    .toBe(true);
+
+  // Entering exactly the expected amount confirms the ledger reconciles.
+  await input.fill("7849.59");
+  await input.blur();
+  await expect(page.getByTestId("reconcile-note-1")).toContainText("✓ matches the transaction-expected balance");
+
+  // Brokerage and card accounts stay hand-entered — no expected line.
+  await expect(page.getByTestId("expected-2")).toHaveCount(0);
+  await expect(page.getByTestId("expected-3")).toHaveCount(0);
 });
 
 test("Settings: JSON/CSV export and danger-zone wipe", async ({ page }) => {
