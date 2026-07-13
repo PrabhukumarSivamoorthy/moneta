@@ -47,6 +47,17 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
+/// Read a backup file from a path the user picked in the open dialog.
+/// Capped at 64 MB — a backup larger than that is not one of ours.
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > 64_000_000 {
+        return Err("file too large to be a Moneta backup".into());
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -94,7 +105,12 @@ pub fn run() {
                 .add_migrations("sqlite:moneta.db", migrations)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_api_key, set_api_key, write_text_file])
+        .invoke_handler(tauri::generate_handler![
+            get_api_key,
+            set_api_key,
+            write_text_file,
+            read_text_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

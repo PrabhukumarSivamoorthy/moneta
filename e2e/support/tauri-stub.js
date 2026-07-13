@@ -153,9 +153,14 @@
       if (cmd === "set_api_key") return null;
       if (cmd === "plugin:dialog|save")
         return "/tmp/e2e/" + ((args.options && args.options.defaultPath) || "file.txt");
+      if (cmd === "plugin:dialog|open") return "/tmp/e2e/backup.json";
       if (cmd === "write_text_file") {
         window.__written.push({ path: args.path, contents: args.contents });
         return null;
+      }
+      if (cmd === "read_text_file") {
+        // Tests prime window.__backupFile with the file contents to serve.
+        return window.__backupFile ?? "";
       }
       if (cmd === "plugin:log|log") {
         window.__logs.push(args.message);

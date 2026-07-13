@@ -301,8 +301,13 @@ sequenceDiagram
     SET->>E: buildBackup(...) — versioned JSON, key CANNOT be included
     SET->>D: native save dialog
     SET->>W: write bytes to the chosen path
+    U->>SET: "Restore from backup…" → pick file
+    SET->>E: parseBackup(contents) — validates BEFORE any write
+    SET-->>U: preview (date + row counts) + replace-everything confirm
+    U->>SET: confirm
+    SET->>B: restoreBackup() — full teardown, parents-first reinsert,<br/>original ids preserved
     U->>SET: "Wipe all data…" → type WIPE
-    SET->>B: wipeAllData() — transactional DELETEs,<br/>categories & settings survive
+    SET->>B: wipeAllData() — children-first DELETEs,<br/>categories & settings survive
 ```
 
 ## 7. The period filter — one filter to rule every screen

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBackup, buildTransactionsCsv, TX_CSV_HEADER } from "../export";
+import { buildBackup, buildTransactionsCsv, parseBackup, TX_CSV_HEADER } from "../export";
 import { readCsv } from "../csv/parse";
 import type { TxRow } from "../../db/repo/transactions";
 
@@ -42,6 +42,43 @@ describe("buildBackup", () => {
     expect(parsed.data.transactions).toHaveLength(1);
     expect(json).not.toContain("sk-ant");
     expect(json).not.toContain("api_key");
+  });
+});
+
+describe("parseBackup", () => {
+  const valid = () =>
+    buildBackup({
+      exportedAt: "2026-07-12T10:00:00Z",
+      accounts: [{ id: 1, name: "Chase" }],
+      categories: [],
+      transactions: [],
+      rules: [],
+      budgets: [],
+      goals: [],
+      bankProfiles: [],
+      uploads: [],
+      settings: { currency: "USD" },
+    });
+
+  it("round-trips what buildBackup produces", () => {
+    const parsed = parseBackup(valid());
+    expect(parsed.exportedAt).toBe("2026-07-12T10:00:00Z");
+    expect(parsed.data.accounts).toHaveLength(1);
+    expect(parsed.data.settings.currency).toBe("USD");
+  });
+
+  it("rejects non-JSON, foreign files, and wrong versions with readable reasons", () => {
+    expect(() => parseBackup("not json")).toThrow(/Not a JSON file/);
+    expect(() => parseBackup('{"app":"other"}')).toThrow(/Not a Moneta backup/);
+    const wrongVersion = JSON.parse(valid());
+    wrongVersion.backupVersion = 99;
+    expect(() => parseBackup(JSON.stringify(wrongVersion))).toThrow(/version 99 is not supported/);
+  });
+
+  it("rejects a backup missing a table", () => {
+    const broken = JSON.parse(valid());
+    delete broken.data.transactions;
+    expect(() => parseBackup(JSON.stringify(broken))).toThrow(/missing the "transactions" table/);
   });
 });
 

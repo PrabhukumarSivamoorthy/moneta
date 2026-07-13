@@ -48,6 +48,59 @@ export function buildBackup(input: BackupInput): string {
   );
 }
 
+export interface ParsedBackup {
+  exportedAt: string;
+  data: {
+    accounts: Record<string, unknown>[];
+    categories: Record<string, unknown>[];
+    transactions: Record<string, unknown>[];
+    rules: Record<string, unknown>[];
+    budgets: Record<string, unknown>[];
+    goals: Record<string, unknown>[];
+    bankProfiles: Record<string, unknown>[];
+    uploads: Record<string, unknown>[];
+    settings: Record<string, string>;
+  };
+}
+
+const BACKUP_TABLES = [
+  "accounts",
+  "categories",
+  "transactions",
+  "rules",
+  "budgets",
+  "goals",
+  "bankProfiles",
+  "uploads",
+] as const;
+
+/**
+ * Validate a backup file's structure. Throws with a human-readable reason
+ * on anything that is not a Moneta backup this version can restore —
+ * callers show the message verbatim.
+ */
+export function parseBackup(json: string): ParsedBackup {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new Error("Not a JSON file — is this really a Moneta backup?");
+  }
+  const b = raw as { app?: unknown; backupVersion?: unknown; exportedAt?: unknown; data?: Record<string, unknown> };
+  if (b?.app !== "moneta") throw new Error("Not a Moneta backup (missing app marker).");
+  if (b.backupVersion !== BACKUP_VERSION) {
+    throw new Error(`Backup version ${String(b.backupVersion)} is not supported by this app (expected ${BACKUP_VERSION}).`);
+  }
+  if (typeof b.data !== "object" || b.data === null) throw new Error("Backup has no data section.");
+  for (const table of BACKUP_TABLES) {
+    if (!Array.isArray(b.data[table])) throw new Error(`Backup is missing the "${table}" table.`);
+  }
+  if (typeof b.data.settings !== "object" || b.data.settings === null || Array.isArray(b.data.settings)) {
+    throw new Error('Backup is missing the "settings" table.');
+  }
+  return raw as ParsedBackup;
+}
+
 /** RFC-4180 field escaping: quote when the value contains a comma, quote,
  * or newline; double embedded quotes. */
 function csvField(value: string | number | null): string {

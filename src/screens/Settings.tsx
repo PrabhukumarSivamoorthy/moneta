@@ -8,10 +8,10 @@ import { listCategories, updateCategory, type Category } from "../db/repo/catego
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
 import { getApiKey, setApiKey } from "../platform/apiKey";
-import { gatherBackupData, wipeAllData } from "../db/backup";
-import { buildBackup, buildTransactionsCsv } from "../lib/export";
+import { gatherBackupData, restoreBackup, wipeAllData } from "../db/backup";
+import { buildBackup, buildTransactionsCsv, parseBackup, type ParsedBackup } from "../lib/export";
 import { queryTransactions } from "../db/repo/transactions";
-import { exportTextFile } from "../platform/exportFile";
+import { exportTextFile, importTextFile } from "../platform/exportFile";
 
 const section =
   "font-courier text-[10.5px] tracking-[0.2em] text-ink-mute border-t border-rule pt-3 mb-3 flex items-center justify-between";
@@ -38,6 +38,9 @@ export default function Settings() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   const [wipeConfirm, setWipeConfirm] = useState(false);
   const [wipeText, setWipeText] = useState("");
+  /** A parsed backup awaiting the user's replace-everything confirmation. */
+  const [pendingRestore, setPendingRestore] = useState<{ file: string; backup: ParsedBackup } | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const aiEnabled = settings.ai_assist_enabled === "1";
 
@@ -388,7 +391,67 @@ export default function Settings() {
         >
           Export transactions CSV
         </button>
+        <button
+          className="cursor-pointer border border-ink/40 bg-transparent px-3.5 py-2 font-courier text-[11.5px] text-ink hover:bg-ink/[0.06]"
+          onClick={async () => {
+            try {
+              const picked = await importTextFile("Moneta backup", ["json"]);
+              if (!picked) return;
+              const backup = parseBackup(picked.contents); // throws a readable reason
+              setPendingRestore({ file: picked.path, backup });
+              setExportNote(null);
+              setError(null);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          }}
+        >
+          Restore from backup…
+        </button>
       </div>
+      {pendingRestore && (
+        <div className="mb-4 border-[1.5px] border-dashed border-danger/50 bg-danger/[0.04] px-4 py-3.5">
+          <div className="mb-2 font-courier text-[10px] tracking-[0.15em] text-danger">
+            RESTORE REPLACES EVERYTHING CURRENTLY IN THE LEDGER
+          </div>
+          <div className="mb-1 font-mono text-[12px]">{pendingRestore.file}</div>
+          <div className="mb-3 text-[12px] italic text-ink-mute">
+            Backup from {pendingRestore.backup.exportedAt.slice(0, 10)} ·{" "}
+            <span className="font-mono not-italic">{pendingRestore.backup.data.transactions.length}</span> transactions ·{" "}
+            <span className="font-mono not-italic">{pendingRestore.backup.data.accounts.length}</span> accounts ·{" "}
+            <span className="font-mono not-italic">{pendingRestore.backup.data.rules.length}</span> rules ·{" "}
+            <span className="font-mono not-italic">{pendingRestore.backup.data.budgets.length}</span> budget rows ·{" "}
+            <span className="font-mono not-italic">{pendingRestore.backup.data.goals.length}</span> goals
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              className="cursor-pointer border-0 bg-danger px-3.5 py-2 font-courier text-[11.5px] font-bold text-paper hover:bg-danger/85 disabled:bg-ink/15 disabled:text-ink-mute"
+              disabled={restoring}
+              onClick={async () => {
+                setRestoring(true);
+                try {
+                  await restoreBackup(pendingRestore.backup);
+                  setPendingRestore(null);
+                  setExportNote(`✓ ledger restored from ${pendingRestore.file}`);
+                  await load();
+                } catch (e) {
+                  setError(String(e));
+                } finally {
+                  setRestoring(false);
+                }
+              }}
+            >
+              {restoring ? "Restoring…" : "Replace ledger with this backup"}
+            </button>
+            <span
+              className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+              onClick={() => setPendingRestore(null)}
+            >
+              cancel — nothing was changed
+            </span>
+          </div>
+        </div>
+      )}
       {exportNote && <div className="mb-8 font-courier text-[11px] text-accent">{exportNote}</div>}
       {!exportNote && <div className="mb-8" />}
 

@@ -73,6 +73,19 @@ These never block the import — bad rows are listed, good rows proceed.
 | `Both debit and credit have values` / `Neither debit nor credit has a value` | Two-column profiles expect exactly one of debit/credit per row | Check the profile's debit/credit column names |
 | `File is empty` | Zero rows parsed | Wrong file, or wrong delimiter in the profile |
 
+## 3b. Backup restore errors (Settings → Restore from backup…)
+
+Validation happens BEFORE anything is written — a rejected file changes
+nothing.
+
+| Message | Meaning | Fix |
+| --- | --- | --- |
+| `Not a JSON file — is this really a Moneta backup?` | The picked file isn't JSON | Pick the `moneta-backup-….json` file exported by the app |
+| `Not a Moneta backup (missing app marker).` | JSON, but from something else | Same |
+| `Backup version N is not supported by this app (expected 1).` | Backup written by a newer app version | Update the app, then restore |
+| `Backup is missing the "…" table.` | Truncated or hand-edited file | Use an unmodified export |
+| `file too large to be a Moneta backup` | >64 MB file picked | Wrong file |
+
 ## 4. Rust command errors (surfaced as plain strings)
 
 | Source | Typical message | Cause / fix |
