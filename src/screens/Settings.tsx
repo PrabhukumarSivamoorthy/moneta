@@ -11,6 +11,7 @@ import { deleteUpload, listUploads, type UploadStats } from "../db/repo/uploads"
 import { getApiKey, setApiKey } from "../platform/apiKey";
 import { gatherBackupData, restoreBackup, wipeAllData } from "../db/backup";
 import { buildBackup, buildTransactionsCsv, parseBackup, type ParsedBackup } from "../lib/export";
+import { decryptText, encryptText, isEncryptedEnvelope } from "../lib/crypto";
 import { queryTransactions } from "../db/repo/transactions";
 import { exportTextFile, importTextFile } from "../platform/exportFile";
 
@@ -44,6 +45,12 @@ export default function Settings() {
   /** A parsed backup awaiting the user's replace-everything confirmation. */
   const [pendingRestore, setPendingRestore] = useState<{ file: string; backup: ParsedBackup } | null>(null);
   const [restoring, setRestoring] = useState(false);
+  /** Optional password: non-empty → the export is encrypted. */
+  const [backupPassword, setBackupPassword] = useState("");
+  /** An encrypted backup picked for restore, awaiting its password. */
+  const [pendingDecrypt, setPendingDecrypt] = useState<{ file: string; contents: string } | null>(null);
+  const [decryptPassword, setDecryptPassword] = useState("");
+  const [decrypting, setDecrypting] = useState(false);
 
   const aiEnabled = settings.ai_assist_enabled === "1";
 
@@ -416,7 +423,18 @@ export default function Settings() {
       <div className={section}>BACKUP &amp; EXPORT</div>
       <div className={note}>
         Everything lives in one local file. Exports include all transactions, budgets, tiers, and rules — never the
-        API key.
+        API key. Set a password to encrypt the backup (AES-256; without the password the file is unreadable — there is
+        no recovery).
+      </div>
+      <div className="mb-3 flex items-baseline gap-2.5">
+        <span className="text-[12px] italic text-ink-mute">Backup password</span>
+        <input
+          type="password"
+          className="w-56 border-0 border-b border-ink/40 bg-transparent px-0.5 py-1 font-mono text-[12px] text-ink focus:border-accent"
+          placeholder="optional — empty = plain backup"
+          value={backupPassword}
+          onChange={(e) => setBackupPassword(e.target.value)}
+        />
       </div>
       <div className="mb-2 flex gap-2.5">
         <button
@@ -424,11 +442,14 @@ export default function Settings() {
           onClick={async () => {
             try {
               const data = await gatherBackupData();
+              const plain = buildBackup({ exportedAt: new Date().toISOString(), ...data });
+              const password = backupPassword.trim();
+              const contents = password ? await encryptText(password, plain) : plain;
               const path = await exportTextFile(
                 `moneta-backup-${new Date().toISOString().slice(0, 10)}.json`,
-                buildBackup({ exportedAt: new Date().toISOString(), ...data }),
+                contents,
               );
-              setExportNote(path ? `✓ backup saved to ${path}` : null);
+              setExportNote(path ? `✓ ${password ? "encrypted " : ""}backup saved to ${path}` : null);
             } catch (e) {
               setError(String(e));
             }
@@ -459,8 +480,16 @@ export default function Settings() {
             try {
               const picked = await importTextFile("Moneta backup", ["json"]);
               if (!picked) return;
-              const backup = parseBackup(picked.contents); // throws a readable reason
-              setPendingRestore({ file: picked.path, backup });
+              if (isEncryptedEnvelope(picked.contents)) {
+                // Nothing is parsed until the password is supplied below.
+                setPendingDecrypt({ file: picked.path, contents: picked.contents });
+                setDecryptPassword("");
+                setPendingRestore(null);
+              } else {
+                const backup = parseBackup(picked.contents); // throws a readable reason
+                setPendingRestore({ file: picked.path, backup });
+                setPendingDecrypt(null);
+              }
               setExportNote(null);
               setError(null);
             } catch (e) {
@@ -471,6 +500,54 @@ export default function Settings() {
           Restore from backup…
         </button>
       </div>
+      {pendingDecrypt && (
+        <div className="mb-4 border-[1.5px] border-dashed border-accent/50 bg-accent/[0.04] px-4 py-3.5">
+          <div className="mb-1.5 font-courier text-[10px] tracking-[0.15em] text-accent">ENCRYPTED BACKUP</div>
+          <div className="mb-2 font-mono text-[12px]">{pendingDecrypt.file}</div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="password"
+              className="w-56 border-0 border-b border-ink/40 bg-transparent px-0.5 py-1 font-mono text-[12px] text-ink focus:border-accent"
+              placeholder="backup password"
+              value={decryptPassword}
+              onChange={(e) => setDecryptPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.currentTarget.nextElementSibling as HTMLButtonElement)?.click();
+              }}
+            />
+            <button
+              className="cursor-pointer border-0 bg-ink px-3.5 py-2 font-courier text-[11px] font-bold text-paper hover:bg-accent disabled:bg-ink/15 disabled:text-ink-mute"
+              disabled={!decryptPassword || decrypting}
+              onClick={async () => {
+                setDecrypting(true);
+                try {
+                  const plain = await decryptText(decryptPassword, pendingDecrypt.contents);
+                  const backup = parseBackup(plain);
+                  setPendingRestore({ file: pendingDecrypt.file, backup });
+                  setPendingDecrypt(null);
+                  setDecryptPassword("");
+                  setError(null);
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setDecrypting(false);
+                }
+              }}
+            >
+              {decrypting ? "Decrypting…" : "Decrypt"}
+            </button>
+            <span
+              className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+              onClick={() => {
+                setPendingDecrypt(null);
+                setDecryptPassword("");
+              }}
+            >
+              cancel
+            </span>
+          </div>
+        </div>
+      )}
       {pendingRestore && (
         <div className="mb-4 border-[1.5px] border-dashed border-danger/50 bg-danger/[0.04] px-4 py-3.5">
           <div className="mb-2 font-courier text-[10px] tracking-[0.15em] text-danger">

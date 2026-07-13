@@ -301,7 +301,9 @@ sequenceDiagram
     SET->>E: buildBackup(...) — versioned JSON, key CANNOT be included
     SET->>D: native save dialog
     SET->>W: write bytes to the chosen path
+    Note over SET,E: optional password → AES-256-GCM envelope<br/>(PBKDF2 600k iterations; lib/crypto.ts)
     U->>SET: "Restore from backup…" → pick file
+    SET->>E: encrypted? ask password + decryptText first
     SET->>E: parseBackup(contents) — validates BEFORE any write
     SET-->>U: preview (date + row counts) + replace-everything confirm
     U->>SET: confirm

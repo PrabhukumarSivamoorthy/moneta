@@ -85,6 +85,8 @@ nothing.
 | `Backup version N is not supported by this app (expected 1).` | Backup written by a newer app version | Update the app, then restore |
 | `Backup is missing the "…" table.` | Truncated or hand-edited file | Use an unmodified export |
 | `file too large to be a Moneta backup` | >64 MB file picked | Wrong file |
+| `Wrong password (or the file is corrupted).` | Encrypted backup: password doesn't match, or the file was modified (AES-GCM authentication failed) | Re-type the password; if it is definitely right, the file is damaged — use another backup. There is NO password recovery |
+| `Not an encrypted backup file.` / `Encrypted backup version N is not supported.` | Envelope malformed or from a newer app | Use an unmodified export; update the app |
 
 ## 4. Rust command errors (surfaced as plain strings)
 
