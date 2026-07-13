@@ -63,6 +63,8 @@ test("Upload step indicator pins while the review list scrolls", async ({ page }
 
   const steps = page.getByText("REVIEW ROWS", { exact: true });
   await expect(steps).toBeVisible();
+  const dateHeader = page.getByText("DATE", { exact: true });
+  await expect(dateHeader).toBeVisible();
 
   const mid = await scrollMain(page, 4000);
   expect(mid.scrollTop).toBeGreaterThan(50);
@@ -72,7 +74,15 @@ test("Upload step indicator pins while the review list scrolls", async ({ page }
   expect(pinned!.y).toBeGreaterThanOrEqual(mid.top - 2);
   expect(pinned!.y).toBeLessThan(mid.top + 200);
 
+  // The review column headers (DATE / MERCHANT / AMOUNT) freeze too.
+  await expect(dateHeader).toBeVisible();
+  const dateBox = await dateHeader.boundingBox();
+  expect(dateBox!.y).toBeGreaterThanOrEqual(mid.top - 2);
+  expect(dateBox!.y).toBeLessThan(mid.top + 300);
+
   await scrollMain(page, 999999);
   const pinned2 = await steps.boundingBox();
   expect(Math.abs(pinned2!.y - pinned!.y)).toBeLessThan(2);
+  const dateBox2 = await dateHeader.boundingBox();
+  expect(Math.abs(dateBox2!.y - dateBox!.y)).toBeLessThan(2);
 });

@@ -39,6 +39,9 @@ interface PendingPdf {
  * named "PDF import" is created on first use. */
 const PDF_PROFILE_NAME = "PDF import";
 
+/** Shared by the frozen review column headers and every review row. */
+const REVIEW_GRID = "grid grid-cols-[32px_96px_1fr_130px_190px] items-center gap-2.5";
+
 interface ReviewRow {
   line: number;
   date: string;
@@ -460,6 +463,30 @@ export default function Upload() {
         )}
 
         <StepIndicator step={step} />
+        {/* In the review step the summary + column headers freeze too, so
+            DATE/MERCHANT/AMOUNT stay visible over a long row list. */}
+        {step === "b" && reviewRows && (
+          <div className="pt-3">
+            <div className="mb-2 flex items-baseline gap-4">
+              <span className="text-[14px]">
+                <span className="font-mono">{reviewRows.filter((r) => r.include).length}</span> of{" "}
+                <span className="font-mono">{reviewRows.length}</span> rows will be added
+              </span>
+              {reviewRows.some((r) => r.flags.duplicateOfDb || r.flags.duplicateInFile) && (
+                <span className="text-[12px] italic text-ink-mute">
+                  duplicates are unchecked by default — tick a row to include it anyway
+                </span>
+              )}
+            </div>
+            <div className={`${REVIEW_GRID} border-t border-rule px-1 py-2`}>
+              <span />
+              <span className="font-courier text-[10px] tracking-[0.2em] text-ink-mute">DATE</span>
+              <span className="font-courier text-[10px] tracking-[0.2em] text-ink-mute">MERCHANT</span>
+              <span className="text-right font-courier text-[10px] tracking-[0.2em] text-ink-mute">AMOUNT</span>
+              <span />
+            </div>
+          </div>
+        )}
       </div>
       <div className="h-6" />
 
@@ -693,70 +720,47 @@ export default function Upload() {
 
       {step === "b" && reviewRows && (
         <>
-          <div className="mb-4 flex items-baseline gap-4">
-            <span className="text-[14px]">
-              <span className="font-mono">{reviewRows.filter((r) => r.include).length}</span> of{" "}
-              <span className="font-mono">{reviewRows.length}</span> rows will be added
-            </span>
-            {reviewRows.some((r) => r.flags.duplicateOfDb || r.flags.duplicateInFile) && (
-              <span className="text-[12px] italic text-ink-mute">
-                duplicates are unchecked by default — tick a row to include it anyway
-              </span>
-            )}
+          <div>
+            {reviewRows.map((r, i) => {
+              const dup = r.flags.duplicateOfDb || r.flags.duplicateInFile;
+              return (
+                <div key={r.line} className={`${REVIEW_GRID} border-b border-rule-soft px-1 py-1.5 ${dup && !r.include ? "opacity-45" : ""}`}>
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={r.include}
+                      className="accent-[#2F5D45]"
+                      onChange={(e) =>
+                        setReviewRows((rows) =>
+                          rows!.map((row, j) => (j === i ? { ...row, include: e.target.checked } : row)),
+                        )
+                      }
+                    />
+                  </span>
+                  <span className="font-mono text-[12px]">{r.date}</span>
+                  <span>
+                    <div className="text-[13px]">{r.merchantNormalized}</div>
+                    <div className="font-mono text-[10.5px] text-ink-faint">{r.merchantRaw}</div>
+                  </span>
+                  <span className={`text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
+                    {formatCents(r.amountCents)}
+                  </span>
+                  <span className="text-right">
+                    {r.flags.duplicateOfDb && (
+                      <span className="border border-danger/40 px-1.5 py-0.5 font-courier text-[9.5px] tracking-[0.08em] text-danger">
+                        IN LEDGER
+                      </span>
+                    )}
+                    {r.flags.duplicateInFile && (
+                      <span className="ml-1 border border-danger/40 px-1.5 py-0.5 font-courier text-[9.5px] tracking-[0.08em] text-danger">
+                        DUP IN FILE
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-rule">
-                {["", "DATE", "MERCHANT", "AMOUNT", ""].map((h, i) => (
-                  <th key={i} className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {reviewRows.map((r, i) => {
-                const dup = r.flags.duplicateOfDb || r.flags.duplicateInFile;
-                return (
-                  <tr key={r.line} className={`border-b border-rule-soft ${dup && !r.include ? "opacity-45" : ""}`}>
-                    <td className="w-8 py-2">
-                      <input
-                        type="checkbox"
-                        checked={r.include}
-                        className="accent-[#2F5D45]"
-                        onChange={(e) =>
-                          setReviewRows((rows) =>
-                            rows!.map((row, j) => (j === i ? { ...row, include: e.target.checked } : row)),
-                          )
-                        }
-                      />
-                    </td>
-                    <td className="py-2 pr-4 font-mono text-[12px]">{r.date}</td>
-                    <td className="py-2 pr-4">
-                      <div className="text-[13px]">{r.merchantNormalized}</div>
-                      <div className="font-mono text-[10.5px] text-ink-faint">{r.merchantRaw}</div>
-                    </td>
-                    <td className={`py-2 pr-4 text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
-                      {formatCents(r.amountCents)}
-                    </td>
-                    <td className="py-2 text-right">
-                      {r.flags.duplicateOfDb && (
-                        <span className="border border-danger/40 px-1.5 py-0.5 font-courier text-[9.5px] tracking-[0.08em] text-danger">
-                          IN LEDGER
-                        </span>
-                      )}
-                      {r.flags.duplicateInFile && (
-                        <span className="ml-1 border border-danger/40 px-1.5 py-0.5 font-courier text-[9.5px] tracking-[0.08em] text-danger">
-                          DUP IN FILE
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
 
           {parsed && parsed.errors.length > 0 && (
             <div className="mt-6">

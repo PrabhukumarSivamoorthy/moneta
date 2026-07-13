@@ -5,7 +5,7 @@ import { effectiveTier, TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { listAccounts, type Account } from "../db/repo/accounts";
 import { listCategories, type Category } from "../db/repo/categories";
 import { createRule, listRules } from "../db/repo/rules";
-import { applyRules } from "../lib/rules";
+import { applyRules, ruleMatches } from "../lib/rules";
 import { getAllSettings } from "../db/repo/settings";
 import {
   deleteTransactions,
@@ -53,7 +53,9 @@ export default function Transactions() {
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState<number | "">("");
-  const [ruleOffer, setRuleOffer] = useState<RuleOffer | null>(null);
+  /** Rule offers queue up (one per merchant), so several corrections can
+   * become several rules in one go. */
+  const [ruleOffers, setRuleOffers] = useState<RuleOffer[]>([]);
 
   /** Two-click delete: first click arms the row, second deletes. */
   const [armedDelete, setArmedDelete] = useState<number | null>(null);
@@ -200,19 +202,48 @@ export default function Transactions() {
     }
   };
 
+  /** Add/replace the offer for a merchant (one pending offer per merchant). */
+  const queueRuleOffer = (merchantNormalized: string, categoryId: number) => {
+    const cat = categories.find((c) => c.id === categoryId);
+    if (!cat) return;
+    setRuleOffers((offers) => [
+      ...offers.filter((o) => o.merchantNormalized !== merchantNormalized),
+      { merchantNormalized, categoryId, categoryName: cat.name },
+    ]);
+  };
+
+  const dismissOffer = (merchantNormalized: string) =>
+    setRuleOffers((offers) => offers.filter((o) => o.merchantNormalized !== merchantNormalized));
+
+  const createOfferedRule = async (offer: RuleOffer) => {
+    try {
+      await createRule(offer.merchantNormalized, "contains", offer.categoryId, "correction");
+      dismissOffer(offer.merchantNormalized);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  /** Persist every queued offer, skipping merchants an existing rule
+   * already matches. */
+  const createAllOfferedRules = async () => {
+    try {
+      const existing = await listRules();
+      for (const offer of ruleOffers) {
+        if (!existing.some((r) => ruleMatches(r, offer.merchantNormalized))) {
+          await createRule(offer.merchantNormalized, "contains", offer.categoryId, "correction");
+        }
+      }
+      setRuleOffers([]);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const recategorize = async (row: TxRow, categoryId: number | null) => {
     try {
       await setTransactionCategory(row.id, categoryId, "manual");
-      if (categoryId !== null) {
-        const cat = categories.find((c) => c.id === categoryId);
-        if (cat) {
-          setRuleOffer({
-            merchantNormalized: row.merchantNormalized,
-            categoryId,
-            categoryName: cat.name,
-          });
-        }
-      }
+      if (categoryId !== null) queueRuleOffer(row.merchantNormalized, categoryId);
       await load();
     } catch (e) {
       setError(String(e));
@@ -360,32 +391,49 @@ export default function Transactions() {
         </div>
       )}
 
-      {/* Rule offer after a manual correction */}
-      {ruleOffer && (
-        <div className="mb-4 flex items-center gap-3 border border-accent/50 bg-accent/5 px-4 py-2.5">
-          <span className="text-[13px]">
-            Always file <span className="font-medium">“{ruleOffer.merchantNormalized}”</span> under{" "}
-            <span className="font-medium">{ruleOffer.categoryName}</span>?
-          </span>
-          <button
-            className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90"
-            onClick={async () => {
-              try {
-                await createRule(ruleOffer.merchantNormalized, "contains", ruleOffer.categoryId, "correction");
-                setRuleOffer(null);
-              } catch (e) {
-                setError(String(e));
-              }
-            }}
-          >
-            Create rule
-          </button>
-          <span
-            className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
-            onClick={() => setRuleOffer(null)}
-          >
-            just this one
-          </span>
+      {/* Rule offers after manual corrections — they queue up so several
+          corrections can become several rules at once */}
+      {ruleOffers.length > 0 && (
+        <div className="mb-4 border border-accent/50 bg-accent/5 px-4 py-2.5">
+          {ruleOffers.length > 1 && (
+            <div className="mb-2 flex items-center gap-3 border-b border-accent/20 pb-2">
+              <span className="font-courier text-[9.5px] tracking-[0.12em] text-accent">
+                {ruleOffers.length} RULE OFFERS
+              </span>
+              <button
+                className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90"
+                onClick={() => void createAllOfferedRules()}
+              >
+                Create all {ruleOffers.length} rules
+              </button>
+              <span
+                className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+                onClick={() => setRuleOffers([])}
+              >
+                dismiss all
+              </span>
+            </div>
+          )}
+          {ruleOffers.map((offer) => (
+            <div key={offer.merchantNormalized} data-testid="rule-offer" className="flex items-center gap-3 py-1">
+              <span className="text-[13px]">
+                Always file <span className="font-medium">“{offer.merchantNormalized}”</span> under{" "}
+                <span className="font-medium">{offer.categoryName}</span>?
+              </span>
+              <button
+                className="cursor-pointer border-0 bg-accent px-3 py-1.5 font-courier text-[11px] font-bold text-paper hover:bg-accent/90"
+                onClick={() => void createOfferedRule(offer)}
+              >
+                Create rule
+              </button>
+              <span
+                className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
+                onClick={() => dismissOffer(offer.merchantNormalized)}
+              >
+                just this one
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -421,7 +469,14 @@ export default function Transactions() {
             disabled={bulkCategory === ""}
             onClick={async () => {
               try {
-                await setTransactionsCategory([...selected], bulkCategory as number, "manual");
+                const ids = [...selected];
+                await setTransactionsCategory(ids, bulkCategory as number, "manual");
+                // Offer a rule per distinct merchant in the selection —
+                // bulk-categorizing N merchants can create N rules at once.
+                const merchants = new Set(
+                  (rows ?? []).filter((r) => selected.has(r.id)).map((r) => r.merchantNormalized),
+                );
+                for (const m of merchants) queueRuleOffer(m, bulkCategory as number);
                 setSelected(new Set());
                 setBulkCategory("");
                 await load();
