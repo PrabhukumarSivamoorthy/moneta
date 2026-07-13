@@ -12,9 +12,10 @@ import initSqlJs, { type Database } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import migration0001 from "../../src-tauri/migrations/0001_init.sql?raw";
 import migration0002 from "../../src-tauri/migrations/0002_balances_system_categories_goals.sql?raw";
+import migration0003 from "../../src-tauri/migrations/0003_personal_care_fees_and_rules.sql?raw";
 
 const STORAGE_KEY = "moneta-dev-db";
-const MIGRATIONS = [migration0001, migration0002];
+const MIGRATIONS = [migration0001, migration0002, migration0003];
 
 function toBase64(bytes: Uint8Array): string {
   let bin = "";
@@ -46,15 +47,17 @@ export async function installBrowserBackend(): Promise<void> {
   const saved = localStorage.getItem(STORAGE_KEY);
   const db: Database = saved ? new SQL.Database(fromBase64(saved)) : new SQL.Database();
 
-  if (!saved) {
-    // Fresh DB: run migrations, then record them so the app's own migration
-    // runner (which we bypass here) is never expected.
-    db.run("CREATE TABLE IF NOT EXISTS _sqlx_migrations (version INTEGER PRIMARY KEY, description TEXT)");
-    MIGRATIONS.forEach((sql, i) => {
-      db.run(sql);
-      db.run("INSERT INTO _sqlx_migrations (version, description) VALUES (?, ?)", [i + 1, `migration_${i + 1}`]);
-    });
-  }
+  // Run migrations incrementally by version — so a NEW migration also
+  // applies to an existing localStorage DB, matching the real plugin.
+  db.run("CREATE TABLE IF NOT EXISTS _sqlx_migrations (version INTEGER PRIMARY KEY, description TEXT)");
+  const appliedRes = db.exec("SELECT version FROM _sqlx_migrations");
+  const applied = new Set((appliedRes[0]?.values ?? []).map((row) => Number(row[0])));
+  MIGRATIONS.forEach((sql, i) => {
+    const version = i + 1;
+    if (applied.has(version)) return;
+    db.run(sql);
+    db.run("INSERT INTO _sqlx_migrations (version, description) VALUES (?, ?)", [version, `migration_${version}`]);
+  });
 
   const persist = () => localStorage.setItem(STORAGE_KEY, toBase64(db.export()));
   persist();

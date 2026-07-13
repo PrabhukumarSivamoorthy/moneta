@@ -73,6 +73,12 @@ pub fn run() {
             sql: include_str!("../migrations/0002_balances_system_categories_goals.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "personal_care_fees_and_rules",
+            sql: include_str!("../migrations/0003_personal_care_fees_and_rules.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

@@ -163,6 +163,16 @@ Migration 0002 additions:
 - Hand-recorded entries (manual income, repayments) are transactions with
   `upload_id NULL` (shown with a MANUAL tag).
 
+Migration 0003 additions:
+- Two spending categories: **Personal care** (comfortable) for grooming,
+  and **Fees & interest** (need) for credit-card interest / finance / late /
+  annual fees — real money out, so they belong in a spending category.
+- Seeded auto-detect rules: card-payment descriptions (`epayment`,
+  `payment thank you`, `autopay`, …) → the **Card payment** system category
+  (both legs net to zero, never counted as spending); interest/fee
+  descriptions → Fees & interest; salon/barber merchants → Personal care.
+  All editable in Settings → Rules.
+
 ## Core logic rules
 
 - **Effective tier:** `COALESCE(tier_override, categories.default_tier)`.
