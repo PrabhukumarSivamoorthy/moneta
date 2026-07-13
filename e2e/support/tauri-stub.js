@@ -69,6 +69,11 @@
     // Uncategorized spend (AI suggestion targets).
     tx(day(0, 9), -1549, "Netflix.com", null),
     tx(day(0, 5), -1199, "Spotify USA", null),
+    // A PRIOR-month uncategorized backlog entry the whole-foods rule matches
+    // — proves that creating/applying rules sweeps the whole ledger, not just
+    // the visible period. Outside the current period, so it does not affect
+    // the "N UNCATEGORIZED" chip or AI-suggestion counts.
+    tx(day(-2, 20), -6200, "Whole Foods Backlog", null),
     // Income, lending, investing, card payment (system categories).
     tx(day(0, 5), 425000, "Acme Corp Direct Dep Payroll", 11),
     tx(day(0, 6), 30000, "Freelance Logo Work", 11, { manual: true, source: "manual" }),

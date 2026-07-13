@@ -129,23 +129,29 @@ export default function Transactions() {
 
   const [applyNote, setApplyNote] = useState<string | null>(null);
 
-  /** Run the rules engine over every uncategorized row in the period and
-   * file the matches (source 'rule') — same engine imports use, so a rule
-   * created today also cleans up history. */
+  /** File every uncategorized entry IN THE WHOLE LEDGER (not just the
+   * visible period) that the given rules match, with source 'rule'.
+   * Returns how many were filed. Shared by the manual "Apply rules" button
+   * and the auto-apply that runs the moment a rule is created. */
+  const fileUncategorizedByRules = async (rules: readonly import("../lib/rules").RuleSpec[]): Promise<number> => {
+    const all = await queryTransactions({ start: "0000-01-01", end: "9999-12-31" });
+    const uncategorized = all.filter((r) => r.categoryId === null);
+    const byCategory = new Map<number, number[]>();
+    for (const r of uncategorized) {
+      const catId = applyRules(rules, r.merchantNormalized);
+      if (catId !== null) byCategory.set(catId, [...(byCategory.get(catId) ?? []), r.id]);
+    }
+    let filed = 0;
+    for (const [catId, ids] of byCategory) {
+      await setTransactionsCategory(ids, catId, "rule");
+      filed += ids.length;
+    }
+    return filed;
+  };
+
   const runApplyRules = async () => {
     try {
-      const rules = await listRules();
-      const uncategorized = (rows ?? []).filter((r) => r.categoryId === null);
-      const byCategory = new Map<number, number[]>();
-      for (const r of uncategorized) {
-        const catId = applyRules(rules, r.merchantNormalized);
-        if (catId !== null) byCategory.set(catId, [...(byCategory.get(catId) ?? []), r.id]);
-      }
-      let filed = 0;
-      for (const [catId, ids] of byCategory) {
-        await setTransactionsCategory(ids, catId, "rule");
-        filed += ids.length;
-      }
+      const filed = await fileUncategorizedByRules(await listRules());
       setApplyNote(
         filed > 0
           ? `✓ ${filed} ${filed === 1 ? "entry" : "entries"} filed by your rules`
@@ -215,17 +221,26 @@ export default function Transactions() {
   const dismissOffer = (merchantNormalized: string) =>
     setRuleOffers((offers) => offers.filter((o) => o.merchantNormalized !== merchantNormalized));
 
+  /** A new rule immediately files matching uncategorized entries across the
+   * whole ledger, then we surface how many it caught. */
+  const afterRulesCreated = async () => {
+    const filed = await fileUncategorizedByRules(await listRules());
+    if (filed > 0) setApplyNote(`✓ ${filed} ${filed === 1 ? "entry" : "entries"} filed by the new rule${filed === 1 ? "" : "s"}`);
+    await load();
+  };
+
   const createOfferedRule = async (offer: RuleOffer) => {
     try {
       await createRule(offer.merchantNormalized, "contains", offer.categoryId, "correction");
       dismissOffer(offer.merchantNormalized);
+      await afterRulesCreated();
     } catch (e) {
       setError(String(e));
     }
   };
 
   /** Persist every queued offer, skipping merchants an existing rule
-   * already matches. */
+   * already matches, then apply them all to the uncategorized backlog. */
   const createAllOfferedRules = async () => {
     try {
       const existing = await listRules();
@@ -235,6 +250,7 @@ export default function Transactions() {
         }
       }
       setRuleOffers([]);
+      await afterRulesCreated();
     } catch (e) {
       setError(String(e));
     }

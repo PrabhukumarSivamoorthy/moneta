@@ -182,7 +182,9 @@ Migration 0002 additions:
   normalized.
 - **Rules engine:** evaluate by priority, first match wins. When the user
   manually recategorizes, offer to create a rule (`created_from =
-  correction`).
+  correction`); offers queue so several corrections become several rules at
+  once. Creating any rule immediately sweeps every uncategorized entry in
+  the whole ledger and files the matches (same as the "Apply rules" button).
 - **AI assist:** batch all uncategorized transactions; strict JSON output
   (transaction id → category); suggestions only.
 - **Global period filter:** app-wide `weekly | monthly | yearly |

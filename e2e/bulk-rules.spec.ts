@@ -27,6 +27,10 @@ test("bulk categorize offers one rule per merchant; create-all skips already-cov
   await expect
     .poll(async () => (await executed(page)).filter((q) => q.startsWith("INSERT INTO rules")).length)
     .toBe(1);
+  // …and the new rules immediately file the matching uncategorized entries.
+  await expect
+    .poll(async () => (await executed(page)).some((q) => q.startsWith("UPDATE transactions SET category_id")))
+    .toBe(true);
 });
 
 test("individual offers can be created or dismissed independently", async ({ page }) => {

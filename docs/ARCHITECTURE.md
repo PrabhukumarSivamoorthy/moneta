@@ -183,7 +183,7 @@ flowchart TD
     A[Row committed from Upload review] --> B{Rules engine\nsrc/lib/rules.ts\npriority order, first match wins}
     B -- match --> C["category_id set\nsource = 'rule'"]
     B -- no match --> D["uncategorized\nsource = 'none'"]
-    D --> R2{User clicks 'Apply rules'?\n(re-runs the engine over\nexisting uncategorized rows)}
+    D --> R2{Creating a rule, OR clicking 'Apply rules'\nsweeps ALL uncategorized entries\nin the whole ledger}
     R2 -- match --> C
     R2 -- no match --> E
     D --> E{AI assist enabled\nAND user clicks\n'Suggest categories'?}

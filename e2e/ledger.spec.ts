@@ -46,6 +46,10 @@ test("Transactions: inline recategorize offers a rule and writes it", async ({ p
   await expect
     .poll(async () => (await executed(page)).some((q) => q.startsWith("INSERT INTO rules")))
     .toBe(true);
+  // Creating the rule immediately files matching uncategorized entries.
+  await expect
+    .poll(async () => (await executed(page)).some((q) => q.startsWith("UPDATE transactions SET category_id")))
+    .toBe(true);
 });
 
 test("Transactions: AI suggestions accept and keep the request private", async ({ page }) => {

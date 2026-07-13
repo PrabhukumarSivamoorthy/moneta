@@ -12,22 +12,31 @@ window.addEventListener("error", (e) => {
 window.addEventListener("unhandledrejection", (e) => {
   void logError("promise", String(e.reason));
 });
-void logInfo("app", "webview started");
-
-// Open the database eagerly so migrations run at launch rather than on the
-// first screen that happens to query.
-const dbReady = getDb().catch((e) => console.error("Database init failed:", e));
-
-// Dev-only import smoke test (see src/dev/e2eImport.ts). Dead code in
-// production builds.
-if (import.meta.env.DEV && import.meta.env.VITE_E2E) {
-  void dbReady
-    .then(() => import("./dev/e2eImport"))
-    .then((m) => m.runE2eImport())
-    .catch((e) => console.error("[e2e-import] failed:", e));
-}
 
 async function start() {
+  // Plain-browser dev (no Tauri shell, no E2E stub already installed):
+  // stand up an in-browser SQLite so every real feature works. Never in the
+  // packaged app — __TAURI_INTERNALS__ is already set there.
+  const hasBackend = !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  if (import.meta.env.DEV && !hasBackend) {
+    const { installBrowserBackend } = await import("./dev/browserBackend");
+    await installBrowserBackend();
+  }
+
+  void logInfo("app", "webview started");
+
+  // Open the database eagerly so migrations run at launch rather than on the
+  // first screen that happens to query.
+  const dbReady = getDb().catch((e) => console.error("Database init failed:", e));
+
+  // Dev-only import smoke test (see src/dev/e2eImport.ts).
+  if (import.meta.env.DEV && import.meta.env.VITE_E2E) {
+    void dbReady
+      .then(() => import("./dev/e2eImport"))
+      .then((m) => m.runE2eImport())
+      .catch((e) => console.error("[e2e-import] failed:", e));
+  }
+
   // The display currency must be known before the first amounts render.
   try {
     const { getAllSettings } = await import("./db/repo/settings");
@@ -35,8 +44,9 @@ async function start() {
     const settings = await getAllSettings();
     if (settings.currency) setDisplayCurrency(settings.currency);
   } catch {
-    // Browser dev / E2E without a settings table: USD default stands.
+    // Missing settings table: USD default stands.
   }
+
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       <App />

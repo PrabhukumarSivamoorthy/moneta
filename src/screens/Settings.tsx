@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { TIER_FILL } from "../components/charts";
-import type { MatchType } from "../lib/rules";
+import { applyRules, type MatchType } from "../lib/rules";
 import { accountStats, setAccountBalance, type AccountStats } from "../db/repo/accounts";
 import { centsToDecimalString, parseAmountToCents, setDisplayCurrency } from "../lib/money";
 import { listCategories, updateCategory, type Category } from "../db/repo/categories";
@@ -12,7 +12,7 @@ import { getApiKey, setApiKey } from "../platform/apiKey";
 import { gatherBackupData, restoreBackup, wipeAllData } from "../db/backup";
 import { buildBackup, buildTransactionsCsv, parseBackup, type ParsedBackup } from "../lib/export";
 import { decryptText, encryptText, isEncryptedEnvelope } from "../lib/crypto";
-import { queryTransactions } from "../db/repo/transactions";
+import { queryTransactions, setTransactionsCategory } from "../db/repo/transactions";
 import { exportTextFile, importTextFile } from "../platform/exportFile";
 
 const section =
@@ -286,6 +286,17 @@ export default function Settings() {
                 setRuleMatcher("");
                 setRuleCat("");
                 setAddingRule(false);
+                // A new rule immediately files matching uncategorized
+                // entries across the whole ledger.
+                const rules = await listRules();
+                const all = await queryTransactions({ start: "0000-01-01", end: "9999-12-31" });
+                const byCat = new Map<number, number[]>();
+                for (const r of all) {
+                  if (r.categoryId !== null) continue;
+                  const catId = applyRules(rules, r.merchantNormalized);
+                  if (catId !== null) byCat.set(catId, [...(byCat.get(catId) ?? []), r.id]);
+                }
+                for (const [catId, ids] of byCat) await setTransactionsCategory(ids, catId, "rule");
                 await load();
               } catch (e) {
                 setError(String(e));
