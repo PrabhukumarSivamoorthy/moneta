@@ -110,6 +110,8 @@
 
   const RULES = [
     { id: 1, matcher: "whole foods", match_type: "contains", category_id: 2, priority: 10, created_from: "correction" },
+    // Matches the uncategorized Netflix row so apply-rules has work to do.
+    { id: 2, matcher: "netflix", match_type: "contains", category_id: 5, priority: 20, created_from: "manual" },
   ];
 
   const SETTINGS = [

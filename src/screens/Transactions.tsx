@@ -4,7 +4,8 @@ import { formatCents } from "../lib/money";
 import { effectiveTier, TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import { listAccounts, type Account } from "../db/repo/accounts";
 import { listCategories, type Category } from "../db/repo/categories";
-import { createRule } from "../db/repo/rules";
+import { createRule, listRules } from "../db/repo/rules";
+import { applyRules } from "../lib/rules";
 import { getAllSettings } from "../db/repo/settings";
 import {
   deleteTransactions,
@@ -118,6 +119,36 @@ export default function Transactions() {
     return { out, in: inn };
   }, [visible]);
 
+  const [applyNote, setApplyNote] = useState<string | null>(null);
+
+  /** Run the rules engine over every uncategorized row in the period and
+   * file the matches (source 'rule') — same engine imports use, so a rule
+   * created today also cleans up history. */
+  const runApplyRules = async () => {
+    try {
+      const rules = await listRules();
+      const uncategorized = (rows ?? []).filter((r) => r.categoryId === null);
+      const byCategory = new Map<number, number[]>();
+      for (const r of uncategorized) {
+        const catId = applyRules(rules, r.merchantNormalized);
+        if (catId !== null) byCategory.set(catId, [...(byCategory.get(catId) ?? []), r.id]);
+      }
+      let filed = 0;
+      for (const [catId, ids] of byCategory) {
+        await setTransactionsCategory(ids, catId, "rule");
+        filed += ids.length;
+      }
+      setApplyNote(
+        filed > 0
+          ? `✓ ${filed} ${filed === 1 ? "entry" : "entries"} filed by your rules`
+          : "no rules matched the uncategorized entries",
+      );
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   /** Batch all uncategorized rows through the AI. Results are suggestions
    * only — each needs an explicit accept below. */
   const runSuggest = async () => {
@@ -210,6 +241,16 @@ export default function Transactions() {
             {uncategorizedCount} UNCATEGORIZED
           </span>
         )}
+        {uncategorizedCount > 0 && (
+          <button
+            className="cursor-pointer border border-accent/50 bg-transparent px-2.5 py-1 font-courier text-[10.5px] text-accent hover:bg-accent/10"
+            onClick={() => void runApplyRules()}
+            title="Run your rules over the uncategorized entries in this period"
+          >
+            Apply rules
+          </button>
+        )}
+        {applyNote && <span className="font-courier text-[10.5px] text-ink-mute">{applyNote}</span>}
         {aiEnabled && uncategorizedCount > 0 && (
           <button
             className="cursor-pointer border-0 bg-ink px-2.5 py-1 font-courier text-[10.5px] font-bold text-paper hover:bg-accent disabled:bg-ink/15 disabled:text-ink-mute"

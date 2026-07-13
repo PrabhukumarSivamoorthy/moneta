@@ -46,7 +46,9 @@ test("CSV import: parse → review with dedup and errors → commit", async ({ p
   // Confirm: summary + real INSERTs issued (Whole Foods matched the rule).
   await expect(page.getByText("IMPORT COMPLETE")).toBeVisible();
   await expect(page.getByText("4 entries added to the ledger")).toBeVisible();
-  await expect(page.getByText("1 auto-categorized by your rules")).toBeVisible();
+  // Whole Foods matches the groceries rule; the Netflix row matches the
+  // subscriptions rule.
+  await expect(page.getByText("2 auto-categorized by your rules")).toBeVisible();
   await expect(page.getByText("1 duplicates skipped")).toBeVisible();
 
   const writes = await executed(page);
