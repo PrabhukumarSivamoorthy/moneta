@@ -177,6 +177,7 @@ function ProfileEditor({
           >
             <option>YYYY-MM-DD</option>
             <option>MM/DD/YYYY</option>
+            <option>MM/DD/YY</option>
             <option>DD.MM.YYYY</option>
           </select>
         </div>

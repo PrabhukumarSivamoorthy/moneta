@@ -78,6 +78,7 @@ export function readCsv(text: string, delimiter = ","): string[][] {
 const DATE_PATTERNS: Record<DateFormat, RegExp> = {
   "YYYY-MM-DD": /^(\d{4})-(\d{2})-(\d{2})$/,
   "MM/DD/YYYY": /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+  "MM/DD/YY": /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/,
   "DD.MM.YYYY": /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/,
 };
 
@@ -86,9 +87,20 @@ export function parseDate(value: string, format: DateFormat): string | null {
   const m = DATE_PATTERNS[format].exec(value.trim());
   if (!m) return null;
   let y: number, mo: number, d: number;
-  if (format === "YYYY-MM-DD") [y, mo, d] = [+m[1], +m[2], +m[3]];
-  else if (format === "MM/DD/YYYY") [y, mo, d] = [+m[3], +m[1], +m[2]];
-  else [y, mo, d] = [+m[3], +m[2], +m[1]];
+  switch (format) {
+    case "YYYY-MM-DD":
+      [y, mo, d] = [+m[1], +m[2], +m[3]];
+      break;
+    case "MM/DD/YYYY":
+      [y, mo, d] = [+m[3], +m[1], +m[2]];
+      break;
+    case "MM/DD/YY":
+      [y, mo, d] = [2000 + +m[3], +m[1], +m[2]];
+      break;
+    case "DD.MM.YYYY":
+      [y, mo, d] = [+m[3], +m[2], +m[1]];
+      break;
+  }
   if (mo < 1 || mo > 12) return null;
   const daysInMonth = new Date(y, mo, 0).getDate();
   if (d < 1 || d > daysInMonth) return null;

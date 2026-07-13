@@ -11,7 +11,9 @@ export interface ColumnMap {
   credit?: string;
 }
 
-export type DateFormat = "YYYY-MM-DD" | "MM/DD/YYYY" | "DD.MM.YYYY";
+// MM/DD/YY covers 2-digit-year statements like Discover ("5/2/25"); the
+// year expands to 20YY.
+export type DateFormat = "YYYY-MM-DD" | "MM/DD/YYYY" | "MM/DD/YY" | "DD.MM.YYYY";
 
 /** How the bank represents money leaving the account in the amount column. */
 export type SignConvention = "debits_negative" | "debits_positive";

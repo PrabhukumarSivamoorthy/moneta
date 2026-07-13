@@ -41,6 +41,15 @@ describe("parseDate", () => {
     expect(parseDate("11.07.2026", "DD.MM.YYYY")).toBe("2026-07-11");
   });
 
+  it("parses 2-digit-year (Discover) dates, expanding to 20YY", () => {
+    expect(parseDate("5/2/25", "MM/DD/YY")).toBe("2025-05-02");
+    expect(parseDate("12/31/24", "MM/DD/YY")).toBe("2024-12-31");
+    // A 4-digit year is not this format.
+    expect(parseDate("5/2/2025", "MM/DD/YY")).toBeNull();
+    // Still rejects impossible calendar dates.
+    expect(parseDate("2/30/25", "MM/DD/YY")).toBeNull();
+  });
+
   it("rejects invalid calendar dates and wrong formats", () => {
     expect(parseDate("2026-02-30", "YYYY-MM-DD")).toBeNull();
     expect(parseDate("13/40/2026", "MM/DD/YYYY")).toBeNull();
