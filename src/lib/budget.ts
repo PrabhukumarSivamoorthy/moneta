@@ -75,6 +75,37 @@ export function tierMixActual(rows: readonly SpendRow[]): TierMix {
   };
 }
 
+export interface BudgetAllocation {
+  /** Budgeted cents per tier. */
+  budgetCents: Record<Tier, number>;
+  /** Share of the total budget per tier, 0–100, rounded to one decimal.
+   * All zeros when nothing is budgeted. */
+  sharePct: Record<Tier, number>;
+  totalCents: number;
+}
+
+/** How budgeted dollars split across tiers. Budgets are per category, so each
+ * category's DEFAULT tier applies — per-transaction tier overrides can't
+ * exist for money that hasn't been spent yet. Lets the user compare the plan
+ * against tier targets before any spending happens. */
+export function budgetTierAllocation(
+  items: readonly { defaultTier: Tier; budgetCents: number }[],
+): BudgetAllocation {
+  const budgetCents: Record<Tier, number> = { need: 0, comfortable: 0, luxury: 0 };
+  for (const it of items) budgetCents[it.defaultTier] += it.budgetCents;
+  const total = budgetCents.need + budgetCents.comfortable + budgetCents.luxury;
+  const share = (c: number) => (total === 0 ? 0 : Math.round((c / total) * 1000) / 10);
+  return {
+    budgetCents,
+    sharePct: {
+      need: share(budgetCents.need),
+      comfortable: share(budgetCents.comfortable),
+      luxury: share(budgetCents.luxury),
+    },
+    totalCents: total,
+  };
+}
+
 export type BudgetStatus = "ok" | "warn" | "over";
 
 /** 80% / 100% thresholds. A zero budget with any spend is over. */

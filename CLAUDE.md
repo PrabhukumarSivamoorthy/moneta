@@ -205,6 +205,13 @@ Migration 0003 additions:
   days-of-period-in-month ÷ days-in-month); yearly scope sums the year's 12
   monthly budgets. Period math (boundaries, buckets, proration) is pure,
   unit-tested TS in `src/lib/period.ts`.
+- **Budgets apply-forward:** month scope offers "Apply {month} to rest of
+  year / entire year" (one upsert-copy per target month, `applyBudgetsToMonths`
+  in `src/db/repo/budgets.ts`) with session-scoped undo that restores the
+  pre-apply snapshot (`replaceBudgetsForMonths`). Tier-target cards also show
+  the **budgeted** mix — how budget dollars split across tiers by category
+  default tier (`budgetTierAllocation` in `src/lib/budget.ts`) — alongside the
+  actual-spend mix.
 - **Subscription detection (Phase 5):** same normalized merchant, amount
   within ±10%, roughly monthly cadence, ≥3 occurrences.
 

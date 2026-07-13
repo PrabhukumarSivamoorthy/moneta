@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   budgetStatus,
+  budgetTierAllocation,
   spendByCategory,
   tierMixActual,
   type SpendRow,
@@ -72,6 +73,28 @@ describe("system categories", () => {
     const mix = tierMixActual([systemRow]);
     expect(mix.spendCents).toEqual({ need: 0, comfortable: 0, luxury: 0 });
     expect(mix.uncategorizedCount).toBe(0);
+  });
+});
+
+describe("budgetTierAllocation", () => {
+  it("sums budgeted cents by default tier and computes one-decimal shares", () => {
+    // Mirrors the e2e stub budgets: need 2420.00, comfortable 410.00, luxury 250.00.
+    const alloc = budgetTierAllocation([
+      { defaultTier: "need", budgetCents: 190000 },
+      { defaultTier: "need", budgetCents: 52000 },
+      { defaultTier: "comfortable", budgetCents: 32000 },
+      { defaultTier: "luxury", budgetCents: 25000 },
+      { defaultTier: "comfortable", budgetCents: 9000 },
+    ]);
+    expect(alloc.budgetCents).toEqual({ need: 242000, comfortable: 41000, luxury: 25000 });
+    expect(alloc.totalCents).toBe(308000);
+    expect(alloc.sharePct).toEqual({ need: 78.6, comfortable: 13.3, luxury: 8.1 });
+  });
+
+  it("ignores zero-budget categories and returns zero shares when nothing is budgeted", () => {
+    const empty = budgetTierAllocation([{ defaultTier: "need", budgetCents: 0 }]);
+    expect(empty.totalCents).toBe(0);
+    expect(empty.sharePct).toEqual({ need: 0, comfortable: 0, luxury: 0 });
   });
 });
 

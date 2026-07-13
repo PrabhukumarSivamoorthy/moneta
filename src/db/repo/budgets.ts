@@ -47,3 +47,42 @@ export async function copyBudgets(fromMonth: string, toMonth: string): Promise<n
   );
   return rows[0].n;
 }
+
+/** Copy one month's budget rows into each target month (overwriting rows
+ * already there). One independent upsert per month — never BEGIN/COMMIT
+ * through the pooled plugin. Returns the number of categories copied. */
+export async function applyBudgetsToMonths(fromMonth: string, toMonths: string[]): Promise<number> {
+  const db = await getDb();
+  const rows = await db.select<{ n: number }[]>(
+    "SELECT COUNT(*) AS n FROM budgets WHERE month = $1",
+    [fromMonth],
+  );
+  for (const toMonth of toMonths) {
+    await db.execute(
+      `INSERT INTO budgets (category_id, month, amount_cents)
+       SELECT category_id, $2, amount_cents FROM budgets WHERE month = $1
+       ON CONFLICT (category_id, month) DO UPDATE SET amount_cents = excluded.amount_cents`,
+      [fromMonth, toMonth],
+    );
+  }
+  return rows[0].n;
+}
+
+/** Replace the given months' budget rows with the provided set — this powers
+ * undo of applyBudgetsToMonths (rows = the pre-apply snapshot). */
+export async function replaceBudgetsForMonths(months: string[], rows: BudgetRow[]): Promise<void> {
+  if (months.length === 0) return;
+  const db = await getDb();
+  const placeholders = months.map((_, i) => `$${i + 1}`).join(", ");
+  await db.execute(`DELETE FROM budgets WHERE month IN (${placeholders})`, months);
+  if (rows.length === 0) return;
+  const values: unknown[] = [];
+  const tuples = rows.map((r, i) => {
+    values.push(r.categoryId, r.month, r.amountCents);
+    return `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`;
+  });
+  await db.execute(
+    `INSERT INTO budgets (category_id, month, amount_cents) VALUES ${tuples.join(", ")}`,
+    values,
+  );
+}

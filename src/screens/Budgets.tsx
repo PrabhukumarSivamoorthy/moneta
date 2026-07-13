@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useResolvedPeriod } from "../state/period";
 import { centsToDecimalString, formatCents, parseAmountToCents } from "../lib/money";
 import { monthsInRange, prorateBudget } from "../lib/period";
-import { budgetStatus, spendByCategory, tierMixActual, type BudgetStatus } from "../lib/budget";
+import {
+  budgetStatus,
+  budgetTierAllocation,
+  spendByCategory,
+  tierMixActual,
+  type BudgetStatus,
+} from "../lib/budget";
 import { TIER_LABELS, TIERS, type Tier } from "../lib/tier";
 import {
   createCategory,
@@ -11,7 +17,14 @@ import {
   updateCategory,
   type Category,
 } from "../db/repo/categories";
-import { budgetsForMonths, copyBudgets, setBudget, type BudgetRow } from "../db/repo/budgets";
+import {
+  applyBudgetsToMonths,
+  budgetsForMonths,
+  copyBudgets,
+  replaceBudgetsForMonths,
+  setBudget,
+  type BudgetRow,
+} from "../db/repo/budgets";
 import { getAllSettings, setSetting } from "../db/repo/settings";
 import { queryTransactions, type TxRow } from "../db/repo/transactions";
 
@@ -52,6 +65,16 @@ function prevMonthKey(month: string): string {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 
+/** All 12 month keys of the given month's year. */
+function yearMonths(month: string): string[] {
+  const year = month.slice(0, 4);
+  return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
+}
+
+function shortMonthName(month: string): string {
+  return new Date(`${month}-01T00:00:00`).toLocaleString("en-US", { month: "short" });
+}
+
 export default function Budgets() {
   const period = useResolvedPeriod();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -61,6 +84,8 @@ export default function Budgets() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  /** After "apply forward": target months + their pre-apply rows, for undo. */
+  const [applied, setApplied] = useState<{ months: string[]; snapshot: BudgetRow[] } | null>(null);
 
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -106,6 +131,12 @@ export default function Budgets() {
     void load();
   }, [load]);
 
+  // The undo snapshot belongs to the month it was taken for.
+  useEffect(() => {
+    setApplied(null);
+    setCopied(null);
+  }, [month]);
+
   const budgetMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const b of budgets) m.set(`${b.categoryId}:${b.month}`, b.amountCents);
@@ -135,7 +166,39 @@ export default function Budgets() {
   );
   const uncatSpent = spend.get(null) ?? 0;
 
+  /** How the budgeted dollars split across tiers (by category default tier). */
+  const alloc = budgetTierAllocation(
+    rows.map((r) => ({ defaultTier: r.cat.defaultTier, budgetCents: r.budget })),
+  );
+
   const targetSum = TIERS.reduce((s, t) => s + (Number(targets[t]) || 0), 0);
+
+  const restMonths = yearMonths(month).filter((m) => m > month);
+  const otherMonths = yearMonths(month).filter((m) => m !== month);
+
+  const applyForward = async (targets: string[]) => {
+    if (targets.length === 0) return;
+    try {
+      const snapshot = await budgetsForMonths(targets);
+      await applyBudgetsToMonths(month, targets);
+      setApplied({ months: targets, snapshot });
+      setCopied(null);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const undoApply = async () => {
+    if (!applied) return;
+    try {
+      await replaceBudgetsForMonths(applied.months, applied.snapshot);
+      setApplied(null);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const commitBudgetEdit = async (categoryId: number, value: string) => {
     const cents = parseAmountToCents(value || "0");
@@ -182,6 +245,40 @@ export default function Budgets() {
           >
             Copy last month's budgets
           </button>
+          <div className="flex items-center gap-1.5 border border-accent/50 px-3 py-[7px]">
+            <span className="font-courier text-[11px] text-ink-mute">
+              Apply {isMonth ? shortMonthName(month) : "month"} to
+            </span>
+            <button
+              data-testid="apply-rest-of-year"
+              onClick={() => void applyForward(restMonths)}
+              disabled={!isMonth || restMonths.length === 0}
+              title={
+                !isMonth
+                  ? "Switch to month scope to apply budgets forward"
+                  : restMonths.length === 0
+                    ? "No months left this year"
+                    : `Copy ${month} budgets into ${restMonths.join(", ")}`
+              }
+              className="cursor-pointer border-0 bg-transparent p-0 font-courier text-[11px] text-accent underline hover:text-ink disabled:cursor-default disabled:text-ink-faint disabled:no-underline"
+            >
+              rest of year
+            </button>
+            <span className="font-courier text-[11px] text-ink-faint">·</span>
+            <button
+              data-testid="apply-entire-year"
+              onClick={() => void applyForward(otherMonths)}
+              disabled={!isMonth}
+              title={
+                isMonth
+                  ? `Copy ${month} budgets into every other month of ${month.slice(0, 4)} (overwrites earlier months too)`
+                  : "Switch to month scope to apply budgets forward"
+              }
+              className="cursor-pointer border-0 bg-transparent p-0 font-courier text-[11px] text-accent underline hover:text-ink disabled:cursor-default disabled:text-ink-faint disabled:no-underline"
+            >
+              entire year
+            </button>
+          </div>
         </div>
       </div>
       <div className="mb-4 text-[11.5px] italic text-ink-faint">
@@ -191,6 +288,18 @@ export default function Budgets() {
         {copied !== null && (
           <span className="ml-3 font-courier not-italic text-[11px] text-accent">
             ✓ copied {copied} budget{copied === 1 ? "" : "s"} from {prevMonthKey(month)}
+          </span>
+        )}
+        {applied && (
+          <span data-testid="apply-note" className="ml-3 font-courier not-italic text-[11px] text-accent">
+            ✓ applied to {shortMonthName(applied.months[0])}–{shortMonthName(applied.months[applied.months.length - 1])} ({applied.months.length} month{applied.months.length === 1 ? "" : "s"}){" "}
+            <button
+              data-testid="apply-undo"
+              onClick={() => void undoApply()}
+              className="cursor-pointer border-0 bg-transparent p-0 font-courier text-[11px] text-accent underline hover:text-ink"
+            >
+              undo
+            </button>
           </span>
         )}
       </div>
@@ -334,6 +443,8 @@ export default function Budgets() {
           const actual = mix.sharePct[t];
           const target = Number(targets[t]) || 0;
           const off = Math.abs(actual - target) > 5 && totals.spent > 0;
+          const budgeted = alloc.sharePct[t];
+          const budgetedOff = Math.abs(budgeted - target) > 5 && alloc.totalCents > 0;
           return (
             <div key={t} className="border-t border-rule pt-3">
               <div className="mb-2.5 flex items-center gap-2">
@@ -361,10 +472,31 @@ export default function Budgets() {
                   <span className={`font-mono not-italic ${off ? "text-danger" : "text-ink"}`}>{actual}%</span>
                 </span>
               </div>
+              <div className="mt-2 flex items-baseline justify-between text-[12px] italic text-ink-mute">
+                <span>
+                  budgeted{" "}
+                  <span
+                    data-testid={`tier-budgeted-${t}`}
+                    className={`font-mono not-italic ${budgetedOff ? "text-danger" : "text-ink"}`}
+                  >
+                    {budgeted}%
+                  </span>
+                </span>
+                <span className="font-mono not-italic text-[11px] text-ink-faint">
+                  {formatCents(alloc.budgetCents[t])}
+                  {isMonth ? "/mo" : ""}
+                </span>
+              </div>
             </div>
           );
         })}
       </div>
+      {alloc.totalCents > 0 && (
+        <div className="mb-3 text-[11.5px] italic text-ink-faint">
+          Budgeted mix shows how your budget amounts split across tiers (by each category's default
+          tier) — adjust budgets above until it matches your targets.
+        </div>
+      )}
       {targetSum !== 100 && (
         <div className="mb-6 text-[12.5px] italic text-danger">
           Targets sum to <span className="font-mono not-italic">{targetSum}%</span> — adjust them to total 100.
