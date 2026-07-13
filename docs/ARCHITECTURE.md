@@ -183,6 +183,9 @@ flowchart TD
     A[Row committed from Upload review] --> B{Rules engine\nsrc/lib/rules.ts\npriority order, first match wins}
     B -- match --> C["category_id set\nsource = 'rule'"]
     B -- no match --> D["uncategorized\nsource = 'none'"]
+    D --> R2{User clicks 'Apply rules'?\n(re-runs the engine over\nexisting uncategorized rows)}
+    R2 -- match --> C
+    R2 -- no match --> E
     D --> E{AI assist enabled\nAND user clicks\n'Suggest categories'?}
     E -- yes --> F["Anthropic batch call\n(merchant + amount ONLY)"]
     F --> G{User accepts\nsuggestion chip ✓?}
@@ -311,6 +314,26 @@ sequenceDiagram
     U->>SET: "Wipe all data…" → type WIPE
     SET->>B: wipeAllData() — children-first DELETEs,<br/>categories & settings survive
 ```
+
+### 6.6 Correcting mistakes — delete, undo import
+
+Every destructive action is two-click (arm, then confirm) and nothing is
+deleted before the second click:
+
+- **Delete a transaction** — the × at the end of each ledger row, or select
+  rows and use the bulk `Delete N… → Really delete N?` button
+  (`deleteTransactions` in `repo/transactions.ts`).
+- **Undo a whole import** — Settings → IMPORT HISTORY lists every upload
+  with how many of its entries are still in the ledger; "undo import"
+  deletes exactly those transactions, then the upload record
+  (`deleteUpload` in `repo/uploads.ts`, children first).
+
+### 6.7 Display currency
+
+`formatCents` renders in the currency chosen in Settings
+(`setDisplayCurrency` in `src/lib/money.ts`). It is loaded before the first
+render and applied immediately on change — display only; stored amounts are
+plain integer cents with no currency attached.
 
 ## 7. The period filter — one filter to rule every screen
 
