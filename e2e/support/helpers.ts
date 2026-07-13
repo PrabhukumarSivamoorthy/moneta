@@ -35,3 +35,16 @@ export function written(page: Page): Promise<{ path: string; contents: string }[
 export function aiCalls(page: Page): Promise<string[]> {
   return page.evaluate(() => (window as unknown as { __aiCalls: string[] }).__aiCalls);
 }
+
+/** Messages written through the log plugin. */
+export function logs(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __logs: string[] }).__logs);
+}
+
+/** Arm the stub to throw "database is locked" on the next execute whose
+ * query matches the pattern. */
+export function failNextExecute(page: Page, pattern: string): Promise<void> {
+  return page.evaluate((p) => {
+    (window as unknown as { __failOnce: string | null }).__failOnce = p;
+  }, pattern);
+}

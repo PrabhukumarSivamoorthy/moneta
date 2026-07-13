@@ -141,6 +141,10 @@
   window.__executed = [];
   window.__written = [];
   window.__aiCalls = [];
+  window.__logs = [];
+  // Failure injection: set to a regex source string and the NEXT execute
+  // whose query matches throws SQLite's "database is locked" (code 5).
+  window.__failOnce = null;
 
   window.__TAURI_INTERNALS__ = {
     transformCallback: (cb) => cb,
@@ -153,8 +157,16 @@
         window.__written.push({ path: args.path, contents: args.contents });
         return null;
       }
+      if (cmd === "plugin:log|log") {
+        window.__logs.push(args.message);
+        return null;
+      }
       if (cmd === "plugin:sql|load") return "sqlite:moneta.db";
       if (cmd === "plugin:sql|execute") {
+        if (window.__failOnce && new RegExp(window.__failOnce).test(args.query)) {
+          window.__failOnce = null;
+          throw new Error("error returned from database: (code: 5) database is locked");
+        }
         window.__executed.push(args.query);
         return [1, 999];
       }
