@@ -379,6 +379,10 @@ What gets logged:
 - Uncaught window errors and unhandled promise rejections (`src/main.tsx`).
 - Rust-side plugin/log output. Log files rotate at ~2 MB.
 
+Every error a user can meet — SQLite codes, Anthropic API statuses, parse
+errors — is cataloged with causes and fixes in
+[`docs/ERROR-CODES.md`](./ERROR-CODES.md).
+
 Known pitfall — **"database is locked" (SQLite code 5)**:
 
 1. The SQL plugin executes statements on a connection *pool*. Manual

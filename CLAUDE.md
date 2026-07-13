@@ -54,6 +54,11 @@ pipeline — update the matching diagram/section there **in the same change**,
 and update this file's roadmap/data-model notes if they are affected. Docs
 that lag the code are treated as bugs.
 
+`docs/ERROR-CODES.md` is the error code book: every SQLite code, Anthropic
+API status, parse error, and command error the app can surface, with causes
+and fixes. Any change that introduces a new error path adds its entry there
+in the same change.
+
 ## Build & release
 
 - Local package: `npm run tauri build` → `src-tauri/target/release/bundle/`.
