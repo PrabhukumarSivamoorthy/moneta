@@ -7,6 +7,7 @@ import { centsToDecimalString, parseAmountToCents } from "../lib/money";
 import { listCategories, updateCategory, type Category } from "../db/repo/categories";
 import { createRule, deleteRule, listRules, type Rule } from "../db/repo/rules";
 import { getAllSettings, setSetting } from "../db/repo/settings";
+import { deleteUpload, listUploads, type UploadStats } from "../db/repo/uploads";
 import { getApiKey, setApiKey } from "../platform/apiKey";
 import { gatherBackupData, restoreBackup, wipeAllData } from "../db/backup";
 import { buildBackup, buildTransactionsCsv, parseBackup, type ParsedBackup } from "../lib/export";
@@ -23,6 +24,8 @@ const ghostBtn =
 
 export default function Settings() {
   const [accounts, setAccounts] = useState<AccountStats[]>([]);
+  const [uploads, setUploads] = useState<UploadStats[]>([]);
+  const [armedUndo, setArmedUndo] = useState<number | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -46,13 +49,15 @@ export default function Settings() {
 
   const load = useCallback(async () => {
     try {
-      const [accts, cats, rls, stgs] = await Promise.all([
+      const [accts, ups, cats, rls, stgs] = await Promise.all([
         accountStats(),
+        listUploads(),
         listCategories(),
         listRules(),
         getAllSettings(),
       ]);
       setAccounts(accts);
+      setUploads(ups);
       setCategories(cats);
       setRules(rls);
       setSettings(stgs);
@@ -144,6 +149,56 @@ export default function Settings() {
       </div>
       <div className="mb-8 text-[11px] italic text-ink-faint">
         Balances feed the Overview screen; for credit cards enter the amount owed as a positive number.
+      </div>
+
+      {/* Import history */}
+      <div className={section}>IMPORT HISTORY</div>
+      <div className={note}>
+        Undoing an import deletes every entry it brought in — the file itself is untouched, so you can re-import it
+        (with a fixed profile) any time.
+      </div>
+      <div className="mb-8">
+        {uploads.map((u) => (
+          <div key={u.id} className="flex items-center gap-3.5 border-b border-[rgba(74,108,88,0.28)] py-2">
+            <div className="flex-1">
+              <div className="font-mono text-[12.5px]">{u.filename}</div>
+              <div className="mt-0.5 text-[11px] italic text-ink-faint">
+                {u.account_name} · imported <span className="font-mono not-italic">{u.imported_at.slice(0, 10)}</span> ·{" "}
+                <span className="font-mono not-italic">{u.remaining}</span> of{" "}
+                <span className="font-mono not-italic">{u.row_count}</span> entries still in the ledger
+              </div>
+            </div>
+            {armedUndo === u.id ? (
+              <span className="whitespace-nowrap font-courier text-[11px]">
+                <span
+                  className="cursor-pointer font-bold text-danger underline"
+                  onClick={async () => {
+                    try {
+                      await deleteUpload(u.id);
+                      setArmedUndo(null);
+                      await load();
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  delete {u.remaining} entries?
+                </span>{" "}
+                <span className="cursor-pointer text-ink-mute underline" onClick={() => setArmedUndo(null)}>
+                  cancel
+                </span>
+              </span>
+            ) : (
+              <span
+                className="cursor-pointer font-courier text-[11px] text-ink-mute underline hover:text-danger"
+                onClick={() => setArmedUndo(u.id)}
+              >
+                undo import
+              </span>
+            )}
+          </div>
+        ))}
+        {uploads.length === 0 && <div className="py-2 text-[12px] italic text-ink-faint">No imports yet.</div>}
       </div>
 
       {/* Categories — default tier */}

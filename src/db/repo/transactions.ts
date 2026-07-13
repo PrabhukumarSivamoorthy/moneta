@@ -144,6 +144,13 @@ export async function setTransactionsCategory(
   );
 }
 
+export async function deleteTransactions(ids: number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+  await db.execute(`DELETE FROM transactions WHERE id IN (${placeholders})`, ids);
+}
+
 export async function setTierOverride(id: number, tier: Tier | null): Promise<void> {
   const db = await getDb();
   await db.execute("UPDATE transactions SET tier_override = $1 WHERE id = $2", [tier, id]);

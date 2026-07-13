@@ -178,6 +178,14 @@
       if (cmd === "plugin:sql|select") {
         const q = (args && args.query) || "";
         if (q.includes("COALESCE(MAX(priority)")) return [{ next: 20 }];
+        if (q.includes("FROM uploads u"))
+          return [
+            {
+              id: 1, account_id: 1, bank_profile_id: 1, filename: "chase_statement.csv",
+              imported_at: day(0, 1) + "T09:00:00Z", row_count: 9,
+              account_name: "Chase Checking", remaining: 9,
+            },
+          ];
         if (q.includes("COUNT(t.id)"))
           return ACCOUNTS.map((a) => ({ ...a, entry_count: 5, last_date: day(0, 10) }));
         if (q.includes("COUNT(*) AS n FROM transactions")) return [{ n: TXS.length }];

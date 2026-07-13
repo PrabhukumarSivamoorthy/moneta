@@ -7,6 +7,7 @@ import { listCategories, type Category } from "../db/repo/categories";
 import { createRule } from "../db/repo/rules";
 import { getAllSettings } from "../db/repo/settings";
 import {
+  deleteTransactions,
   queryTransactions,
   setTierOverride,
   setTransactionCategory,
@@ -46,6 +47,10 @@ export default function Transactions() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState<number | "">("");
   const [ruleOffer, setRuleOffer] = useState<RuleOffer | null>(null);
+
+  /** Two-click delete: first click arms the row, second deletes. */
+  const [armedDelete, setArmedDelete] = useState<number | null>(null);
+  const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
 
   const [aiEnabled, setAiEnabled] = useState(false);
   /** AI suggestions under review: transaction id → suggested categoryId. */
@@ -377,9 +382,35 @@ export default function Transactions() {
           >
             Apply
           </button>
+          <button
+            className={`cursor-pointer border px-3 py-1.5 font-courier text-[11px] ${
+              bulkDeleteArmed
+                ? "border-0 bg-danger font-bold text-paper hover:bg-danger/85"
+                : "border-danger/50 bg-transparent text-danger hover:bg-danger/10"
+            }`}
+            onClick={async () => {
+              if (!bulkDeleteArmed) {
+                setBulkDeleteArmed(true);
+                return;
+              }
+              try {
+                await deleteTransactions([...selected]);
+                setSelected(new Set());
+                setBulkDeleteArmed(false);
+                await load();
+              } catch (e) {
+                setError(String(e));
+              }
+            }}
+          >
+            {bulkDeleteArmed ? `Really delete ${selected.size}?` : `Delete ${selected.size}…`}
+          </button>
           <span
             className="cursor-pointer font-courier text-[11px] text-ink-mute underline"
-            onClick={() => setSelected(new Set())}
+            onClick={() => {
+              setSelected(new Set());
+              setBulkDeleteArmed(false);
+            }}
           >
             clear selection
           </span>
@@ -413,6 +444,7 @@ export default function Transactions() {
               <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">CATEGORY</th>
               <th className="py-2 pr-4 text-left font-courier text-[10px] font-normal tracking-[0.2em] text-ink-mute">TIER</th>
               {sortHeader("amount", "AMOUNT", "text-right")}
+              <th className="w-16 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -536,6 +568,38 @@ export default function Transactions() {
                   </td>
                   <td className={`py-2 text-right font-mono text-[12.5px] ${r.amountCents > 0 ? "text-accent" : ""}`}>
                     {formatCents(r.amountCents)}
+                  </td>
+                  <td className="py-2 pl-3 text-right">
+                    {armedDelete === r.id ? (
+                      <span className="whitespace-nowrap font-courier text-[10px]">
+                        <span
+                          className="cursor-pointer font-bold text-danger underline"
+                          title="Yes, delete this entry"
+                          onClick={async () => {
+                            try {
+                              await deleteTransactions([r.id]);
+                              setArmedDelete(null);
+                              await load();
+                            } catch (e) {
+                              setError(String(e));
+                            }
+                          }}
+                        >
+                          delete?
+                        </span>{" "}
+                        <span className="cursor-pointer text-ink-mute underline" onClick={() => setArmedDelete(null)}>
+                          no
+                        </span>
+                      </span>
+                    ) : (
+                      <span
+                        className="cursor-pointer font-courier text-[12px] text-ink-faint hover:text-danger"
+                        title="Delete this entry"
+                        onClick={() => setArmedDelete(r.id)}
+                      >
+                        ×
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
