@@ -28,9 +28,16 @@ function fromBase64(b64: string): Uint8Array {
   return out;
 }
 
-/** Rewrite `$1,$2,…` placeholders to sql.js's `?` positional binds. */
-function toPositional(query: string): string {
-  return query.replace(/\$\d+/g, "?");
+/**
+ * Bind by parameter NAME, not position. The repos use numbered params
+ * (`$1`, `$2`, …) and some reuse a number — e.g. settings upsert does
+ * `… ON CONFLICT DO UPDATE SET value = $2`. SQLite/sql.js support `$N`
+ * named binding via an object, so a reused `$2` correctly maps to one
+ * value. (Converting to positional `?` would wrongly create an extra
+ * placeholder and bind NULL → "NOT NULL constraint failed".)
+ */
+function bindParams(values: unknown[]): Record<string, unknown> {
+  return Object.fromEntries(values.map((v, i) => [`$${i + 1}`, v ?? null]));
 }
 
 export async function installBrowserBackend(): Promise<void> {
@@ -53,8 +60,8 @@ export async function installBrowserBackend(): Promise<void> {
   persist();
 
   const select = (query: string, values: unknown[]): Record<string, unknown>[] => {
-    const stmt = db.prepare(toPositional(query));
-    stmt.bind(values as never[]);
+    const stmt = db.prepare(query);
+    stmt.bind(bindParams(values) as never);
     const rows: Record<string, unknown>[] = [];
     while (stmt.step()) rows.push(stmt.getAsObject());
     stmt.free();
@@ -62,7 +69,7 @@ export async function installBrowserBackend(): Promise<void> {
   };
 
   const execute = (query: string, values: unknown[]): [number, number] => {
-    db.run(toPositional(query), values as never[]);
+    db.run(query, bindParams(values) as never);
     const changes = db.getRowsModified();
     const idRow = select("SELECT last_insert_rowid() AS id", []);
     persist();
