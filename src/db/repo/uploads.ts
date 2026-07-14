@@ -23,6 +23,19 @@ export async function createUpload(
   return res.lastInsertId as number;
 }
 
+/** Every (account, profile) pairing ever imported, oldest first — the caller
+ * keeps the last pairing per account to pre-select the matching bank profile
+ * when an account is chosen on the Upload screen. */
+export async function listUploadProfilePairs(): Promise<
+  { accountId: number; bankProfileId: number }[]
+> {
+  const db = await getDb();
+  const rows = await db.select<{ account_id: number; bank_profile_id: number }[]>(
+    "SELECT account_id, bank_profile_id FROM uploads ORDER BY id",
+  );
+  return rows.map((r) => ({ accountId: r.account_id, bankProfileId: r.bank_profile_id }));
+}
+
 export interface UploadStats extends Upload {
   account_name: string;
   /** Rows from this upload still in the ledger (some may have been deleted). */

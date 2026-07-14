@@ -25,6 +25,28 @@ test("sidebar navigates every screen", async ({ page }) => {
   }
 });
 
+test("Upload: choosing an account pre-selects its last-used bank profile", async ({ page }) => {
+  await nav(page, "Upload");
+
+  const account = page.getByTestId("account-select");
+  const profile = page.getByTestId("profile-select");
+
+  // Default account (Chase Checking) was last imported with profile 1.
+  await expect(profile).toHaveValue("1");
+
+  // Amex Gold's upload history pairs it with the Amex Gold CSV profile.
+  await account.selectOption({ label: "Amex Gold · credit card" });
+  await expect(profile).toHaveValue("2");
+
+  // Switching back re-selects the Chase profile.
+  await account.selectOption({ label: "Chase Checking · checking" });
+  await expect(profile).toHaveValue("1");
+
+  // E*TRADE has no import history — the current selection is left alone.
+  await account.selectOption({ label: "E*TRADE · brokerage" });
+  await expect(profile).toHaveValue("1");
+});
+
 test("CSV import: parse → review with dedup and errors → commit", async ({ page }) => {
   await nav(page, "Upload");
 

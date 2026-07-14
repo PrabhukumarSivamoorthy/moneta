@@ -152,6 +152,21 @@
       column_map_json: JSON.stringify({ date: "Transaction Date", description: "Description", amount: "Amount" }),
       sign_convention: "debits_negative",
     },
+    {
+      id: 2,
+      name: "Amex Gold CSV",
+      delimiter: ",",
+      date_format: "MM/DD/YYYY",
+      column_map_json: JSON.stringify({ date: "Date", description: "Description", amount: "Amount" }),
+      sign_convention: "debits_positive",
+    },
+  ];
+
+  // (account, profile) history pairs — drives the Upload screen's
+  // account → last-used-profile auto-select.
+  const UPLOAD_PAIRS = [
+    { account_id: 1, bank_profile_id: 1 },
+    { account_id: 3, bank_profile_id: 2 },
   ];
 
   window.__executed = [];
@@ -194,6 +209,7 @@
       if (cmd === "plugin:sql|select") {
         const q = (args && args.query) || "";
         if (q.includes("COALESCE(MAX(priority)")) return [{ next: 20 }];
+        if (q.includes("SELECT account_id, bank_profile_id FROM uploads")) return UPLOAD_PAIRS;
         if (q.includes("FROM uploads u"))
           return [
             {

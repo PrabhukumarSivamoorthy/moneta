@@ -212,7 +212,8 @@ sequenceDiagram
     participant R as repos (uploads, transactions)
     participant DB as SQLite
 
-    U->>UP: drop statement.csv, pick account + bank profile
+    U->>UP: drop statement.csv, pick account
+    Note over UP: picking an account pre-selects the bank profile<br/>it was last imported with (upload history)
     UP->>P: parseStatement(text, profile)
     P-->>UP: rows[] + errors[] (bad rows NEVER dropped silently)
     UP->>N: normalizeMerchant(each row)
@@ -223,7 +224,7 @@ sequenceDiagram
     UP-->>U: Step 2 review — duplicates unchecked, error list shown
     U->>UP: confirm ("Add N entries")
     UP->>UP: rules engine categorizes each row
-    UP->>R: createUpload + insertImported (BEGIN…COMMIT)
+    UP->>R: createUpload + insertImported (atomic multi-row INSERT — never BEGIN/COMMIT)
     R->>DB: INSERT rows
     UP-->>U: Step 3 summary (added / auto-categorized / skipped / failed)
 ```

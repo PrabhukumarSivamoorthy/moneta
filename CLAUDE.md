@@ -185,7 +185,9 @@ Migration 0003 additions:
   pure TS helper (`src/lib/tier.ts`), not scattered SQL.
 - **CSV parsing:** apply the bank profile's column map; normalize amounts to
   integer cents respecting the sign convention; rows that fail parsing go to
-  an error list with a reason — never silently dropped.
+  an error list with a reason — never silently dropped. Picking an account on
+  the Upload screen pre-selects the bank profile it was last imported with
+  (from upload history, `listUploadProfilePairs`; PDF imports excluded).
 - **Dedup:** `dedup_hash = sha256(account_id | date | amount_cents |
   merchant_normalized)`. On import, flag exact hash matches against existing
   transactions AND within the same file. Flagged rows are skipped by default

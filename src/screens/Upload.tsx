@@ -15,7 +15,7 @@ import {
   updateBankProfile,
   type BankProfile,
 } from "../db/repo/bankProfiles";
-import { createUpload } from "../db/repo/uploads";
+import { createUpload, listUploadProfilePairs } from "../db/repo/uploads";
 import { existingHashes, insertImported } from "../db/repo/transactions";
 import { listRules } from "../db/repo/rules";
 import { applyRules } from "../lib/rules";
@@ -281,6 +281,9 @@ export default function Upload() {
   const [profiles, setProfiles] = useState<BankProfile[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
+  /** Last bank profile used per account (from upload history) — picking an
+   * account pre-selects its profile so no second click is needed. */
+  const [lastProfile, setLastProfile] = useState<Map<number, number>>(new Map());
   const [editingProfile, setEditingProfile] = useState<"new" | "edit" | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
   const [newAccountName, setNewAccountName] = useState("");
@@ -302,11 +305,26 @@ export default function Upload() {
 
   const refresh = async () => {
     try {
-      const [a, p] = await Promise.all([listAccounts(), listBankProfiles()]);
+      const [a, p, pairs] = await Promise.all([
+        listAccounts(),
+        listBankProfiles(),
+        listUploadProfilePairs(),
+      ]);
       setAccounts(a);
       setProfiles(p);
+      // Last profile used per account (last pairing wins). PDF imports are
+      // skipped — their placeholder profile would mis-parse a CSV — as are
+      // pairings whose profile has since been deleted.
+      const pdfId = p.find((x) => x.name === PDF_PROFILE_NAME)?.id;
+      const known = new Set(p.map((x) => x.id));
+      const last = new Map<number, number>();
+      for (const pair of pairs) {
+        if (pair.bankProfileId === pdfId || !known.has(pair.bankProfileId)) continue;
+        last.set(pair.accountId, pair.bankProfileId);
+      }
+      setLastProfile(last);
       setAccountId((id) => id ?? a[0]?.id ?? null);
-      setProfileId((id) => id ?? p[0]?.id ?? null);
+      setProfileId((id) => id ?? last.get(a[0]?.id ?? -1) ?? p[0]?.id ?? null);
       setDbError(null);
     } catch (e) {
       setDbError(String(e));
@@ -605,11 +623,22 @@ export default function Upload() {
             <div>
               <div className={label}>ACCOUNT</div>
               <select
+                data-testid="account-select"
                 className={selectCls}
                 value={accountId ?? "new"}
                 onChange={(e) => {
                   if (e.target.value === "new") setAddingAccount(true);
-                  else setAccountId(Number(e.target.value));
+                  else {
+                    const id = Number(e.target.value);
+                    setAccountId(id);
+                    // Pre-select the profile this account was last imported
+                    // with, sparing the second click.
+                    const suggested = lastProfile.get(id);
+                    if (suggested !== undefined) {
+                      setProfileId(suggested);
+                      setEditingProfile(null);
+                    }
+                  }
                 }}
               >
                 {accounts.map((a) => (
@@ -655,6 +684,7 @@ export default function Upload() {
 
               <div className={`${label} mt-6`}>BANK PROFILE</div>
               <select
+                data-testid="profile-select"
                 className={selectCls}
                 value={editingProfile === "new" ? "new" : (profileId ?? "new")}
                 onChange={(e) => {
