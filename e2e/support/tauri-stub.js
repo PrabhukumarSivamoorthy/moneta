@@ -169,6 +169,18 @@
     { account_id: 3, bank_profile_id: 2 },
   ];
 
+  // Planned earnings: Salary matches the Acme payroll rows ($4,250 earned vs
+  // $4,000 plan → +$250); Dividends matches nothing ($0 vs $100 → −$100);
+  // "Freelance Logo Work" ($300) matches no source → Unplanned.
+  const INCOME_SOURCES = [
+    { id: 1, name: "Salary", matcher: "payroll", match_type: "contains", priority: 10 },
+    { id: 2, name: "Dividends", matcher: "dividend", match_type: "contains", priority: 20 },
+  ];
+  const INCOME_PLANS = [
+    { source_id: 1, month: CUR_MONTH, amount_cents: 400000 },
+    { source_id: 2, month: CUR_MONTH, amount_cents: 10000 },
+  ];
+
   window.__executed = [];
   window.__written = [];
   window.__aiCalls = [];
@@ -209,6 +221,9 @@
       if (cmd === "plugin:sql|select") {
         const q = (args && args.query) || "";
         if (q.includes("COALESCE(MAX(priority)")) return [{ next: 20 }];
+        if (q.includes("COUNT(*) AS n FROM income_plans")) return [{ n: INCOME_PLANS.length }];
+        if (q.includes("FROM income_sources")) return INCOME_SOURCES;
+        if (q.includes("FROM income_plans")) return INCOME_PLANS;
         if (q.includes("SELECT account_id, bank_profile_id FROM uploads")) return UPLOAD_PAIRS;
         if (q.includes("FROM uploads u"))
           return [

@@ -99,6 +99,7 @@ erDiagram
     categories ||--o{ transactions : categorizes
     categories ||--o{ rules : "targeted by"
     categories ||--o{ budgets : budgeted
+    income_sources ||--o{ income_plans : "planned per month"
 
     accounts {
         int id PK
@@ -159,9 +160,22 @@ erDiagram
         text target_month
         int saved_cents
     }
+    income_sources {
+        int id PK
+        text name "Salary, Freelance, ..."
+        text matcher "rules-engine semantics"
+        text match_type "contains | prefix | regex"
+        int priority "lowest wins"
+    }
+    income_plans {
+        int id PK
+        int source_id FK
+        text month "YYYY-MM"
+        int amount_cents "planned earnings for that month"
+    }
     settings {
         text key PK
-        text value "tier targets, currency, plan, ai flag"
+        text value "tier targets, currency, legacy plan, ai flag"
     }
 ```
 

@@ -38,8 +38,9 @@ test("Earnings: earned this period, manual tag, source type", async ({ page }) =
   await nav(page, "Earnings");
 
   // Current-month Income rows: Acme payroll $4,250.00 + Freelance $300.00.
+  // (Also appears in the planned-earnings TOTAL row, hence .first().)
   await expect(page.getByText("EARNED THIS PERIOD")).toBeVisible();
-  await expect(page.getByText("$4,550.00")).toBeVisible();
+  await expect(page.getByText("$4,550.00").first()).toBeVisible();
 
   const freelanceRow = page.locator('[class*="100px_1fr_170px_90px_120px"]', {
     hasText: "Freelance Logo Work",

@@ -22,6 +22,8 @@ export interface BackupInput {
   goals: unknown[];
   bankProfiles: unknown[];
   uploads: unknown[];
+  incomeSources: unknown[];
+  incomePlans: unknown[];
   settings: Record<string, string>;
 }
 
@@ -40,6 +42,8 @@ export function buildBackup(input: BackupInput): string {
         goals: input.goals,
         bankProfiles: input.bankProfiles,
         uploads: input.uploads,
+        incomeSources: input.incomeSources,
+        incomePlans: input.incomePlans,
         settings: input.settings,
       },
     },
@@ -59,6 +63,8 @@ export interface ParsedBackup {
     goals: Record<string, unknown>[];
     bankProfiles: Record<string, unknown>[];
     uploads: Record<string, unknown>[];
+    incomeSources: Record<string, unknown>[];
+    incomePlans: Record<string, unknown>[];
     settings: Record<string, string>;
   };
 }
@@ -97,6 +103,12 @@ export function parseBackup(json: string): ParsedBackup {
   }
   if (typeof b.data.settings !== "object" || b.data.settings === null || Array.isArray(b.data.settings)) {
     throw new Error('Backup is missing the "settings" table.');
+  }
+  // Tables added after v1 shipped are optional: backups exported before the
+  // planned-earnings feature simply restore them as empty.
+  for (const table of ["incomeSources", "incomePlans"]) {
+    if (b.data[table] === undefined) b.data[table] = [];
+    else if (!Array.isArray(b.data[table])) throw new Error(`Backup's "${table}" table is malformed.`);
   }
   return raw as ParsedBackup;
 }

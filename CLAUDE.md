@@ -177,6 +177,13 @@ Migration 0003 additions:
   descriptions → Fees & interest; salon/barber merchants → Personal care.
   All editable in Settings → Rules.
 
+Migration 0004 additions:
+- `income_sources(id, name, matcher, match_type contains|prefix|regex,
+  priority, created_at)` — named income sources (Salary, Freelance) matched
+  against income transactions with the rules-engine semantics.
+- `income_plans(id, source_id, month 'YYYY-MM', amount_cents,
+  UNIQUE(source_id, month))` — planned earnings per source per month.
+
 ## Core logic rules
 
 - **Effective tier:** `COALESCE(tier_override, categories.default_tier)`.
@@ -218,6 +225,14 @@ Migration 0003 additions:
   the **budgeted** mix — how budget dollars split across tiers by category
   default tier (`budgetTierAllocation` in `src/lib/budget.ts`) — alongside the
   actual-spend mix.
+- **Planned earnings:** income sources (Earnings screen) attribute income
+  rows to the first pattern-matching source in priority order
+  (`allocateEarnings` in `src/lib/earnings.ts`, reusing `ruleMatches`);
+  unmatched income surfaces as "Unplanned". Plans are per source per month
+  (copy-last-month + apply-forward with undo, like budgets); the
+  planned-vs-earned bar, DTI, and the Overview forecast
+  (`plannedIncomeCentsByMonth`) use the source totals, falling back to the
+  legacy single `income_plan_cents` setting when no sources exist.
 - **Subscription detection (Phase 5):** same normalized merchant, amount
   within ±10%, roughly monthly cadence, ≥3 occurrences.
 

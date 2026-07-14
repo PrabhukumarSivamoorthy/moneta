@@ -33,6 +33,8 @@ describe("buildBackup", () => {
       goals: [],
       bankProfiles: [],
       uploads: [],
+      incomeSources: [{ id: 1, name: "Salary", matcher: "payroll", match_type: "contains", priority: 10 }],
+      incomePlans: [{ id: 1, source_id: 1, month: "2026-07", amount_cents: 400000 }],
       settings: { currency: "USD", ai_assist_enabled: "1" },
     });
     const parsed = JSON.parse(json);
@@ -57,6 +59,8 @@ describe("parseBackup", () => {
       goals: [],
       bankProfiles: [],
       uploads: [],
+      incomeSources: [],
+      incomePlans: [],
       settings: { currency: "USD" },
     });
 
@@ -79,6 +83,19 @@ describe("parseBackup", () => {
     const broken = JSON.parse(valid());
     delete broken.data.transactions;
     expect(() => parseBackup(JSON.stringify(broken))).toThrow(/missing the "transactions" table/);
+  });
+
+  it("accepts pre-planned-earnings backups: missing income tables default to empty", () => {
+    const old = JSON.parse(valid());
+    delete old.data.incomeSources;
+    delete old.data.incomePlans;
+    const parsed = parseBackup(JSON.stringify(old));
+    expect(parsed.data.incomeSources).toEqual([]);
+    expect(parsed.data.incomePlans).toEqual([]);
+    // But a malformed (non-array) income table is still rejected.
+    const bad = JSON.parse(valid());
+    bad.data.incomeSources = "nope";
+    expect(() => parseBackup(JSON.stringify(bad))).toThrow(/"incomeSources" table is malformed/);
   });
 });
 

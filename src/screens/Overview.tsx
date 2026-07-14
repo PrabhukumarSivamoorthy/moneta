@@ -7,6 +7,7 @@ import { isSpend } from "../lib/budget";
 import { detectRecurring } from "../lib/recurring";
 import { listAccounts, type Account } from "../db/repo/accounts";
 import { getAllSettings } from "../db/repo/settings";
+import { plansForMonths } from "../db/repo/income";
 import { queryTransactions, type TxRow } from "../db/repo/transactions";
 
 const section =
@@ -19,6 +20,13 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** 'YYYY-MM' of the month `offset` months from now. */
+function monthKeyOffset(offset: number): string {
+  const d = new Date();
+  const am = d.getFullYear() * 12 + d.getMonth() + offset;
+  return `${Math.floor(am / 12)}-${String((am % 12) + 1).padStart(2, "0")}`;
+}
+
 const LIQUID_TYPES = new Set(["checking", "savings"]);
 const INVESTED_TYPES = new Set(["brokerage"]);
 const CARD_TYPES = new Set(["credit card"]);
@@ -28,16 +36,22 @@ export default function Overview() {
   const [lendingRows, setLendingRows] = useState<TxRow[]>([]);
   const [allRows, setAllRows] = useState<TxRow[]>([]);
   const [incomePlan, setIncomePlan] = useState<number | null>(null);
+  /** Planned income per projected month from the income-source plans. */
+  const [planByMonth, setPlanByMonth] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [accts, rows, settings] = await Promise.all([
+      const [accts, rows, settings, futurePlans] = await Promise.all([
         listAccounts(),
         // Lent & borrowed is all-time; the forecast reads recent history.
         queryTransactions({ start: "0000-01-01", end: todayIso() }),
         getAllSettings(),
+        plansForMonths([monthKeyOffset(1), monthKeyOffset(2), monthKeyOffset(3)]),
       ]);
+      const sums: Record<string, number> = {};
+      for (const p of futurePlans) sums[p.month] = (sums[p.month] ?? 0) + p.amountCents;
+      setPlanByMonth(sums);
       setLendingRows(rows.filter((r) => r.categoryIsSystem && r.categoryName === "Lent & borrowed"));
       setAllRows(rows);
       setIncomePlan(settings.income_plan_cents ? Number(settings.income_plan_cents) : null);
@@ -102,13 +116,14 @@ export default function Overview() {
     return forecast({
       startingBalanceCents: liquidTotal,
       plannedIncomeCents: incomePlan,
+      plannedIncomeCentsByMonth: planByMonth,
       avgIncomeCents: avgIncome,
       recurringCents,
       avgOtherSpendCents: Math.max(0, avgSpend - recurringCents),
       firstMonth: monthKey(1),
       months: 3,
     });
-  }, [allRows, liquidTotal, incomePlan]);
+  }, [allRows, liquidTotal, incomePlan, planByMonth]);
 
   const balanceNote = (a: Account) => (a.balanceAsOf ? `as of ${a.balanceAsOf}` : "not set");
 

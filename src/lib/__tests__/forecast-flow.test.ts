@@ -32,6 +32,35 @@ describe("forecast", () => {
     expect(m.incomeCents).toBe(300000);
     expect(m.netCents).toBe(200000);
   });
+
+  it("prefers per-month source plans, month by month, over the flat plan", () => {
+    const rows = forecast({
+      startingBalanceCents: 0,
+      plannedIncomeCents: 400000,
+      plannedIncomeCentsByMonth: { "2026-08": 500000, "2026-10": 450000 },
+      avgIncomeCents: 300000,
+      recurringCents: 0,
+      avgOtherSpendCents: 0,
+      firstMonth: "2026-08",
+      months: 3,
+    });
+    // Aug from source plans, Sep falls back to the flat plan, Oct from plans.
+    expect(rows.map((r) => r.incomeCents)).toEqual([500000, 400000, 450000]);
+  });
+
+  it("per-month plans fall through to observed income when no flat plan exists", () => {
+    const rows = forecast({
+      startingBalanceCents: 0,
+      plannedIncomeCents: null,
+      plannedIncomeCentsByMonth: { "2026-08": 500000 },
+      avgIncomeCents: 300000,
+      recurringCents: 0,
+      avgOtherSpendCents: 0,
+      firstMonth: "2026-08",
+      months: 2,
+    });
+    expect(rows.map((r) => r.incomeCents)).toEqual([500000, 300000]);
+  });
 });
 
 const tx = (partial: Partial<TxRow>): TxRow => ({

@@ -8,9 +8,13 @@
 export interface ForecastInput {
   /** Liquid cash today, cents. */
   startingBalanceCents: number;
-  /** Planned income per month, cents (the Earnings plan). Falls back to
-   * observed average income when null. */
+  /** Planned income per month, cents (the legacy single Earnings plan).
+   * Falls back to observed average income when null. */
   plannedIncomeCents: number | null;
+  /** Per-month planned income from the income-source plans ('YYYY-MM' →
+   * cents). A month present here wins over plannedIncomeCents; absent
+   * months use the fallback chain. */
+  plannedIncomeCentsByMonth?: Record<string, number>;
   /** Observed average monthly income over the lookback, cents. */
   avgIncomeCents: number;
   /** Sum of detected recurring charges per month, cents. */
@@ -37,15 +41,19 @@ function addMonths(month: string, count: number): string {
 }
 
 export function forecast(input: ForecastInput): ForecastMonth[] {
-  const income = input.plannedIncomeCents ?? input.avgIncomeCents;
   const out = input.recurringCents + input.avgOtherSpendCents;
   const rows: ForecastMonth[] = [];
   let balance = input.startingBalanceCents;
   for (let i = 0; i < input.months; i++) {
+    const month = addMonths(input.firstMonth, i);
+    const income =
+      input.plannedIncomeCentsByMonth?.[month] ??
+      input.plannedIncomeCents ??
+      input.avgIncomeCents;
     const net = income - out;
     balance += net;
     rows.push({
-      month: addMonths(input.firstMonth, i),
+      month,
       incomeCents: income,
       outCents: out,
       netCents: net,

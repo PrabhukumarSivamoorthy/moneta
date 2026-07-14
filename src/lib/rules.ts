@@ -14,7 +14,11 @@ export interface RuleSpec {
   priority: number;
 }
 
-export function ruleMatches(rule: RuleSpec, merchantNormalized: string): boolean {
+/** Matcher semantics shared by categorization rules and income sources. */
+export function ruleMatches(
+  rule: Pick<RuleSpec, "matcher" | "matchType">,
+  merchantNormalized: string,
+): boolean {
   const merchant = merchantNormalized.toLowerCase();
   const matcher = rule.matcher.toLowerCase();
   switch (rule.matchType) {

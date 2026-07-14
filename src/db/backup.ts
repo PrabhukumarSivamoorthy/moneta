@@ -15,13 +15,15 @@ export interface BackupData {
   goals: unknown[];
   bankProfiles: unknown[];
   uploads: unknown[];
+  incomeSources: unknown[];
+  incomePlans: unknown[];
   settings: Record<string, string>;
 }
 
 export async function gatherBackupData(): Promise<BackupData> {
   const db = await getDb();
   const all = (table: string) => db.select<unknown[]>(`SELECT * FROM ${table}`);
-  const [accounts, categories, transactions, rules, budgets, goals, bankProfiles, uploads, settingRows] =
+  const [accounts, categories, transactions, rules, budgets, goals, bankProfiles, uploads, incomeSources, incomePlans, settingRows] =
     await Promise.all([
       all("accounts"),
       all("categories"),
@@ -31,6 +33,8 @@ export async function gatherBackupData(): Promise<BackupData> {
       all("goals"),
       all("bank_profiles"),
       all("uploads"),
+      all("income_sources"),
+      all("income_plans"),
       db.select<{ key: string; value: string }[]>("SELECT key, value FROM settings"),
     ]);
   return {
@@ -42,6 +46,8 @@ export async function gatherBackupData(): Promise<BackupData> {
     goals,
     bankProfiles,
     uploads,
+    incomeSources,
+    incomePlans,
     settings: Object.fromEntries(settingRows.map((r) => [r.key, r.value])),
   };
 }
@@ -58,7 +64,7 @@ export async function gatherBackupData(): Promise<BackupData> {
  */
 export async function wipeAllData(): Promise<void> {
   const db = await getDb();
-  for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "bank_profiles", "accounts"]) {
+  for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "income_plans", "income_sources", "bank_profiles", "accounts"]) {
     await db.execute(`DELETE FROM ${table}`);
   }
   await db.execute("DELETE FROM settings WHERE key = 'recurring_stopped'");
@@ -80,6 +86,8 @@ const RESTORE_COLUMNS: { table: string; backupKey: keyof ParsedBackup["data"]; c
   { table: "rules", backupKey: "rules", columns: ["id", "matcher", "match_type", "category_id", "priority", "created_from"] },
   { table: "budgets", backupKey: "budgets", columns: ["id", "category_id", "month", "amount_cents", "rollover"] },
   { table: "goals", backupKey: "goals", columns: ["id", "name", "target_cents", "target_month", "saved_cents", "created_at"] },
+  { table: "income_sources", backupKey: "incomeSources", columns: ["id", "name", "matcher", "match_type", "priority", "created_at"] },
+  { table: "income_plans", backupKey: "incomePlans", columns: ["id", "source_id", "month", "amount_cents"] },
 ];
 
 const RESTORE_CHUNK = 500;
@@ -95,7 +103,7 @@ export async function restoreBackup(backup: ParsedBackup): Promise<void> {
   const db = await getDb();
 
   // Children-first teardown, including the seed tables restore will refill.
-  for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "bank_profiles", "accounts", "categories", "settings"]) {
+  for (const table of ["transactions", "uploads", "budgets", "rules", "goals", "income_plans", "income_sources", "bank_profiles", "accounts", "categories", "settings"]) {
     await db.execute(`DELETE FROM ${table}`);
   }
 

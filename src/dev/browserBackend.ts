@@ -13,9 +13,10 @@ import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import migration0001 from "../../src-tauri/migrations/0001_init.sql?raw";
 import migration0002 from "../../src-tauri/migrations/0002_balances_system_categories_goals.sql?raw";
 import migration0003 from "../../src-tauri/migrations/0003_personal_care_fees_and_rules.sql?raw";
+import migration0004 from "../../src-tauri/migrations/0004_income_sources_plans.sql?raw";
 
 const STORAGE_KEY = "moneta-dev-db";
-const MIGRATIONS = [migration0001, migration0002, migration0003];
+const MIGRATIONS = [migration0001, migration0002, migration0003, migration0004];
 
 function toBase64(bytes: Uint8Array): string {
   let bin = "";
